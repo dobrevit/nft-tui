@@ -47,16 +47,9 @@ until a real workflow demands it.
 Both open the editor in modeAdd but stage an `InsertRule` with the
 selected rule's handle as `Position`.
 
-## Phase 4 — skipped intentionally
+## Phase 4 — live monitor
 
-Phase 4 in the roadmap is the htop-style live monitor with top-N
-rules by pps / bps / Δpkts plus a sparkline. Useful but not load-
-bearing for the v1.0 commit-then-rollback story.
-
-**Plan.** Resume Phase 4 once Phase 5 ships and we have any user
-feedback. The data is already in `model.Rule.Counter`; the in-place
-counter merge from Phase 2.2 (`applyRuleset`) gives us a delta per
-tick — we just need a screen.
+Started after Phase 3 lands. See git history.
 
 ## Earlier deferrals still open
 
