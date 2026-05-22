@@ -6,6 +6,7 @@
 #   - .deb and .rpm packages (no libc dependency — fully static)
 #   - SHA-256 checksum file
 #   - SPDX-JSON SBOMs per archive + per binary (via Syft)
+#   - Keyless cosign signature + cert for the checksums file
 #
 # The GitHub release that gets created is a draft (per .goreleaser.yaml);
 # the release-drafter workflow may have already prepared release notes
@@ -19,7 +20,8 @@ on:
       - 'v*'
 
 permissions:
-  contents: write  # create/update releases, upload assets
+  contents: write   # create/update releases, upload assets
+  id-token: write   # cosign keyless signing via GitHub OIDC → Fulcio
 
 jobs:
   goreleaser:
@@ -39,9 +41,14 @@ jobs:
 
       - name: Install Syft (SBOM generator)
         # goreleaser shells out to syft for the SBOM step; it needs
-        # to be on PATH. The official installer drops syft into ./bin
-        # under the cwd; we move it to a global location.
+        # to be on PATH.
         uses: anchore/sbom-action/download-syft@v0
+
+      - name: Install Cosign (release signing)
+        # goreleaser shells out to cosign for the signs step. The
+        # keyless flow uses the workflow's id-token to identify to
+        # Fulcio; no secret keys to manage.
+        uses: sigstore/cosign-installer@v3
 
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6

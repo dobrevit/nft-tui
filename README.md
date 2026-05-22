@@ -66,6 +66,34 @@ $ unshare -rn ./nft-tui
 
 See `nft-tui -help` and `man nft-tui` for the full reference.
 
+## Verifying a release
+
+Every release artifact's SHA-256 is in `checksums.txt`, and that file
+is signed with [cosign](https://docs.sigstore.dev/cosign/overview/)
+via GitHub Actions OIDC (keyless — no public keys to chase). To
+verify before installing:
+
+```sh
+# 1. Download the release artifacts:
+#    nft-tui_<version>_linux_amd64.tar.gz
+#    checksums.txt
+#    checksums.txt.sig
+#    checksums.txt.pem
+
+# 2. Verify the signature against the GitHub workflow identity.
+cosign verify-blob \
+  --certificate-identity-regexp 'https://github.com/dobrevit/nft-tui' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --cert checksums.txt.pem --signature checksums.txt.sig \
+  checksums.txt
+
+# 3. Verify the artifact against the (now-trusted) checksum.
+sha256sum --check --ignore-missing checksums.txt
+```
+
+Each archive and binary also ships an SPDX-JSON SBOM
+(`<artifact>.sbom.json`) for downstream scanners.
+
 ## Build
 
 ```sh
