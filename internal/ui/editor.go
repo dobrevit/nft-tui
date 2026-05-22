@@ -46,6 +46,19 @@ func (e *Explorer) buildEditorPage() tview.Primitive {
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 
+	// Construct the preview FIRST. buildEditorForm initialises its
+	// DropDown widgets via SetCurrentOption(0), which synchronously
+	// fires the onSelect callback → push() → editorBody.SetText →
+	// refreshEditorPreview. If editorPreview isn't built yet that
+	// chain dereferences a nil receiver and panics. (Ditto for the
+	// raw TextArea writing into an unset preview.)
+	e.editorPreview = tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(true)
+	e.editorPreview.SetBorder(true).
+		SetTitle(" Preview (will be staged) ").
+		SetTitleAlign(tview.AlignLeft)
+
 	e.editorBody = tview.NewTextArea().
 		SetPlaceholder(`e.g. tcp dport 22 counter accept`)
 	e.editorBody.SetBorder(true).
@@ -59,13 +72,6 @@ func (e *Explorer) buildEditorPage() tview.Primitive {
 		SetLabel("Comment: ").
 		SetFieldWidth(0)
 	e.editorComment.SetChangedFunc(func(_ string) { e.refreshEditorPreview() })
-
-	e.editorPreview = tview.NewTextView().
-		SetDynamicColors(true).
-		SetWrap(true)
-	e.editorPreview.SetBorder(true).
-		SetTitle(" Preview (will be staged) ").
-		SetTitleAlign(tview.AlignLeft)
 
 	footer := tview.NewTextView().
 		SetDynamicColors(true).
