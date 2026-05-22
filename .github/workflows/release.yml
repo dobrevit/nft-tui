@@ -8,6 +8,15 @@
 #   - SPDX-JSON SBOMs per archive (via Syft)
 #   - Keyless cosign signature + cert for the checksums file
 #   - Multi-arch container images pushed to ghcr.io/dobrevit/nft-tui
+#   - Homebrew formula (when TAP_GITHUB_TOKEN is set)
+#   - Snap package (uploaded as a release artefact; not pushed to
+#     the Snap Store — that's a separate manual step)
+#
+# Optional secrets:
+#   TAP_GITHUB_TOKEN  PAT with `repo` scope on dobrevit/homebrew-tap.
+#                     Skipped automatically when empty: brews.skip_upload
+#                     in .goreleaser.yaml flips to "true" so the formula
+#                     is generated locally but no PR opens.
 #
 # The GitHub release that gets created is a draft (per .goreleaser.yaml);
 # the release-drafter workflow may have already prepared release notes
@@ -52,6 +61,12 @@ jobs:
         # Fulcio; no secret keys to manage.
         uses: sigstore/cosign-installer@v3
 
+      - name: Install snapcraft (for snap build)
+        # goreleaser's snapcrafts: block invokes snapcraft to build
+        # the .snap file. The runner image doesn't include it; snap
+        # itself is preinstalled.
+        run: sudo snap install snapcraft --classic
+
       - name: Set up QEMU
         # buildx needs QEMU to cross-build the arm64 image layer
         # from an amd64 runner.
@@ -75,3 +90,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional secret — when empty, .goreleaser.yaml's brews
+          # block flips skip_upload to "true" so no tap PR opens.
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

@@ -214,6 +214,82 @@ docker_manifests:
       - "ghcr.io/dobrevit/nft-tui:latest-amd64"
       - "ghcr.io/dobrevit/nft-tui:latest-arm64"
 
+# Homebrew tap. goreleaser opens a PR (or commits directly) to a
+# separate repository conventionally named `homebrew-<thing>`; the
+# operator's `brew tap dobrevit/nft-tui` then makes the formula
+# available via `brew install nft-tui`.
+#
+# Skipped at goreleaser time when the TAP_GITHUB_TOKEN secret isn't
+# present, so contributors don't need to create the tap repo to
+# cut a personal release.
+brews:
+  - name: nft-tui
+    skip_upload: "{{ if not (envOrDefault \"TAP_GITHUB_TOKEN\" \"\") }}true{{ else }}false{{ end }}"
+    repository:
+      owner: dobrevit
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: nft-tui release bot
+      email: devops@dobrev.it
+    homepage: https://github.com/dobrevit/nft-tui
+    description: Terminal UI for inspecting and managing nftables on Linux
+    license: MIT
+    # We don't build darwin binaries — nft-tui needs the Linux
+    # nf_tables subsystem to do anything useful. Linuxbrew users get
+    # the formula; macOS users see "no bottle for this platform".
+    install: |
+      bin.install "nft-tui"
+      man1.install "man/nft-tui.1"
+      bash_completion.install "completions/bash/nft-tui"
+      zsh_completion.install "completions/zsh/_nft-tui"
+      fish_completion.install "completions/fish/nft-tui.fish"
+      doc.install "examples"
+    test: |
+      assert_match "nft-tui", shell_output("#{bin}/nft-tui -version")
+    caveats: |
+      nft-tui requires Linux and CAP_NET_ADMIN to inspect or manage
+      the kernel ruleset. The userspace nftables tool must also be
+      installed (apt install nftables, dnf install nftables, etc.).
+
+# Snap package. `classic` confinement is required because nftables
+# management is a host-level capability that strict-confinement
+# can't grant. The .snap file is uploaded to the GitHub release
+# as a downloadable artefact; goreleaser doesn't push to the Snap
+# Store itself — that step is interactive and needs the
+# maintainer's snapcraft login. After a release, push with:
+#
+#     snapcraft login
+#     snapcraft push --release=stable nft-tui_vX.Y.Z_amd64.snap
+#
+# Users can install the artefact directly without the store:
+#
+#     snap install --dangerous --classic nft-tui_vX.Y.Z_amd64.snap
+snapcrafts:
+  - name: nft-tui
+    summary: Terminal UI for inspecting and managing nftables
+    description: |
+      nft-tui is an interactive terminal UI for the Linux nftables
+      firewall. It presents the live ruleset as a navigable tree
+      (family → table → chain → rule), with per-rule packet/byte
+      counters, search, an htop-style live monitor with per-rule
+      sparklines, and (with --write) a staged-edits workflow
+      backed by `nft -c -f` dry-run and atomic `nft -f` commit.
+      Restore is guarded by a 60-second dead-man's switch with
+      automatic rollback.
+    grade: stable
+    confinement: classic
+    license: MIT
+    base: core22
+    publish: false
+    apps:
+      nft-tui:
+        command: nft-tui
+        plugs:
+          - network
+          - network-control
+
 release:
   draft: true
   prerelease: auto

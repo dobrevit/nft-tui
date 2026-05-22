@@ -81,6 +81,22 @@ $ docker run --rm -it --net=host --cap-add=NET_ADMIN \
 netlink socket sees the real ruleset; `--cap-add=NET_ADMIN` is what
 lets it issue the nf_tables syscalls.
 
+## Install
+
+| Source | Command |
+|---|---|
+| `.deb` (Debian / Ubuntu) | `sudo dpkg -i nft-tui_<ver>_linux_amd64.deb` |
+| `.rpm` (Fedora / RHEL) | `sudo rpm -i nft-tui-<ver>.linux_amd64.rpm` |
+| Homebrew (Linuxbrew) | `brew tap dobrevit/nft-tui && brew install nft-tui` |
+| Snap | `sudo snap install --dangerous --classic nft-tui_<ver>_amd64.snap` |
+| Container | `docker pull ghcr.io/dobrevit/nft-tui:latest` |
+| Static binary | grab the `.tar.gz` from the [release page](https://github.com/dobrevit/nft-tui/releases) and `tar xf`; copy `nft-tui` to `/usr/local/bin` |
+
+The static binary is the lowest-friction option — `CGO_ENABLED=0`,
+runs against any glibc or musl. Every other format is a wrapper
+around the same binary plus the man page, shell completions, and
+example config.
+
 See `nft-tui -help` and `man nft-tui` for the full reference.
 
 ## Configuration
