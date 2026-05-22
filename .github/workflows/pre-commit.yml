@@ -32,7 +32,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-          cache: pip
+          # Intentionally no `cache: pip` — we don't ship a
+          # requirements.txt / pyproject.toml; pre-commit/action
+          # below handles caching of pre-commit's own environment
+          # under ~/.cache/pre-commit.
 
       - name: Install golangci-lint
         # The local pre-commit hook references golangci-lint with
