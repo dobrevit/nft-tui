@@ -644,24 +644,13 @@ func l4protoName(n byte) string {
 	return fmt.Sprintf("%d", n)
 }
 
-// formatCTState renders the nf_conntrack state bitmask. The bits are the same
-// as the kernel's NF_CT_STATE_* constants << 0 (NEW=1<<0 ESTABLISHED=1<<1 ...).
+// formatCTState renders the nf_conntrack state bitmask using nft's bit
+// assignments (libnftnl conventions, NOT the kernel's
+// nf_conntrack_common.h IP_CT_* enum which assigns different values).
+// See include/linux/netfilter/nf_conntrack_common.h vs libnftnl's
+// ctstate macros for the divergence.
 func formatCTState(mask uint32) string {
 	bits := []struct {
-		v uint32
-		n string
-	}{
-		{1 << 0, "invalid"},     // NF_CT_STATE_INVALID_BIT is actually 0; nft maps bit 0 to "invalid"
-		{1 << 1, "established"}, // NEW=1, ESTABLISHED=2
-		{1 << 2, "related"},
-		{1 << 3, "new"},
-		{1 << 4, "untracked"},
-	}
-	// nft's bit assignments (see include/linux/netfilter/nf_conntrack_common.h):
-	// IP_CT_NEW=0 -> bit 0 == "new"? But nft uses a different mapping. Use
-	// the values from libnftnl: invalid=0x1, established=0x2, related=0x4,
-	// new=0x8, untracked=0x40. Re-do explicitly:
-	bits = []struct {
 		v uint32
 		n string
 	}{

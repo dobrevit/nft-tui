@@ -47,8 +47,8 @@ func Watch(ctx context.Context, coalesce time.Duration) (<-chan ChangeEvent, err
 	out := make(chan ChangeEvent, 1)
 	go func() {
 		defer close(out)
-		defer mon.Close()
-		defer conn.CloseLasting()
+		defer func() { _ = mon.Close() }()
+		defer func() { _ = conn.CloseLasting() }()
 
 		var (
 			pending    bool

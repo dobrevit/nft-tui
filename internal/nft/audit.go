@@ -91,11 +91,11 @@ func (c *Committer) Audit(e AuditEntry) error {
 		return fmt.Errorf("create audit dir: %w", err)
 	}
 	path := filepath.Join(c.AuditDir, auditFilename)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("open audit log: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if e.UID == 0 && e.User == "" {
 		e.UID, e.User = currentOperator()
 	}
@@ -105,12 +105,11 @@ func (c *Committer) Audit(e AuditEntry) error {
 	return nil
 }
 
-// currentOperator returns (uid, username) of the running process.
-// Username is best-effort — falls back to empty if the user db is
-// unavailable (container with no /etc/passwd, for instance).
-func currentOperator() (int, string) {
-	uid := os.Getuid()
-	name := ""
+// currentOperator returns the UID and resolved username of the running
+// process. Username is best-effort — falls back to empty if the user
+// db is unavailable (container with no /etc/passwd, for instance).
+func currentOperator() (uid int, name string) {
+	uid = os.Getuid()
 	if u, err := user.Current(); err == nil {
 		name = u.Username
 	}

@@ -31,6 +31,6 @@ func yankToTerminal(s string) error {
 		// Fall back to stdout — better than nothing.
 		return emitOSC52(os.Stdout, s)
 	}
-	defer tty.Close()
+	defer func() { _ = tty.Close() }()
 	return emitOSC52(tty, s)
 }

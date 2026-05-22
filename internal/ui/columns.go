@@ -44,7 +44,7 @@ func columnPresets() []*columnSet {
 	}
 }
 
-// columnPresetNames returns the preset names comma-separated, used by
+// ColumnPresetNames returns the preset names comma-separated, used by
 // the --columns flag help and the error path on unknown names.
 func ColumnPresetNames() string {
 	ps := columnPresets()

@@ -844,31 +844,38 @@ func (e *Explorer) showSet(s *model.Set) {
 			}
 		}
 	} else {
-		// Pair up interval-end sentinels for display.
-		var pending string
-		for _, el := range s.Elements {
+		// Pair up interval-end sentinels for display. The previous
+		// element stays in `pending` until either:
+		//   - the next element is an IntervalEnd → emit as low-high
+		//   - the next element is another start → flush pending alone
+		//   - end-of-list → flush pending alone
+		// (Mirrors renderSetElements in internal/nft/setfmt.go.)
+		var pending *model.SetElement
+		flushPending := func() {
+			if pending == nil {
+				return
+			}
+			emit(pending.Key, pending.TimeoutLeft, pending.Comment)
+			pending = nil
+		}
+		for i := range s.Elements {
+			el := &s.Elements[i]
 			if el.IntervalEnd {
-				if pending != "" {
-					emit(pending+"-"+el.Key, 0, "")
-					pending = ""
+				if pending != nil {
+					emit(pending.Key+"-"+el.Key, pending.TimeoutLeft, pending.Comment)
+					pending = nil
 				}
 				continue
 			}
-			if pending != "" {
-				emit(pending, 0, "")
-			}
-			pending = el.Key
-			emit(el.Key, el.TimeoutLeft, el.Comment)
-			pending = ""
+			flushPending()
+			pending = el
 			if count >= 200 {
 				fmt.Fprintf(&b, "  [gray]… %d more elided[-]\n", len(s.Elements)-count)
 				e.info.SetText(b.String())
 				return
 			}
 		}
-		if pending != "" {
-			emit(pending, 0, "")
-		}
+		flushPending()
 	}
 	e.info.SetText(b.String())
 }

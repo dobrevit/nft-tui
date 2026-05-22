@@ -1,0 +1,33 @@
+# golangci-lint — curated linter set (see .golangci.yml).
+#
+# Runs on every PR + push to main. The official action handles
+# matching the binary version with the config-file schema and caches
+# the analysis between runs.
+
+name: golangci-lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golangci-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m

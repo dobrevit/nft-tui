@@ -113,7 +113,7 @@ func (o *AddRule) Describe() string {
 	return fmt.Sprintf("+ rule %s %s %s   %s", o.Family, o.Table, o.Chain, o.Body)
 }
 
-func (o *AddRule) Target() (model.Family, string, string) {
+func (o *AddRule) Target() (family model.Family, table, chain string) {
 	return o.Family, o.Table, o.Chain
 }
 
@@ -155,7 +155,7 @@ func (o *InsertRule) Describe() string {
 		o.Family, o.Table, o.Chain, rel, o.Position, o.Body)
 }
 
-func (o *InsertRule) Target() (model.Family, string, string) {
+func (o *InsertRule) Target() (family model.Family, table, chain string) {
 	return o.Family, o.Table, o.Chain
 }
 
@@ -177,7 +177,7 @@ func (o *DeleteRule) Describe() string {
 		o.Family, o.Table, o.Chain, o.Handle)
 }
 
-func (o *DeleteRule) Target() (model.Family, string, string) {
+func (o *DeleteRule) Target() (family model.Family, table, chain string) {
 	return o.Family, o.Table, o.Chain
 }
 
@@ -201,7 +201,7 @@ func (o *ReplaceRule) Describe() string {
 		o.Family, o.Table, o.Chain, o.Handle, o.Body)
 }
 
-func (o *ReplaceRule) Target() (model.Family, string, string) {
+func (o *ReplaceRule) Target() (family model.Family, table, chain string) {
 	return o.Family, o.Table, o.Chain
 }
 
@@ -222,7 +222,7 @@ func (o *FlushChain) Describe() string {
 	return fmt.Sprintf("flush %s %s %s", o.Family, o.Table, o.Chain)
 }
 
-func (o *FlushChain) Target() (model.Family, string, string) {
+func (o *FlushChain) Target() (family model.Family, table, chain string) {
 	return o.Family, o.Table, o.Chain
 }
 

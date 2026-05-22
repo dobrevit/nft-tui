@@ -164,8 +164,11 @@ func (c *Conn) readSet(s *nftables.Set, t *model.Table) (*model.Set, error) {
 			t.Family, t.Name, s.Name, err)
 	}
 	ms.Elements = make([]model.SetElement, 0, len(els))
-	for _, e := range els {
-		ms.Elements = append(ms.Elements, convertSetElement(ms, e))
+	// nftables.SetElement is ~128 bytes; iterate by index so the range
+	// loop doesn't copy each one (and convertSetElement keeps its
+	// value-receiver signature, no API churn for callers).
+	for i := range els {
+		ms.Elements = append(ms.Elements, convertSetElement(ms, els[i]))
 	}
 	ms.Size = len(ms.Elements)
 	return ms, nil

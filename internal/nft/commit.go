@@ -139,7 +139,7 @@ func (c *Committer) Snapshot(ctx context.Context, path string) error {
 		time.Now().Format(time.RFC3339), host, os.Getuid(),
 	)
 	body := append([]byte(header), out...)
-	if err := os.WriteFile(path, body, 0o640); err != nil {
+	if err := os.WriteFile(path, body, 0o600); err != nil {
 		return fmt.Errorf("write snapshot %s: %w", path, err)
 	}
 	return nil
@@ -226,36 +226,38 @@ func (c *Committer) run(ctx context.Context, args ...string) error {
 // writeStagedFile serialises ops to a temp file and returns its path
 // plus a cleanup function that removes the file. The caller MUST call
 // cleanup; archive() copies the file into the audit dir before that.
-func writeStagedFile(ops []staged.Op) (string, func(), error) {
+func writeStagedFile(ops []staged.Op) (path string, cleanup func(), err error) {
 	f, err := os.CreateTemp("", "nft-tui-staged-*.nft")
 	if err != nil {
 		return "", nil, fmt.Errorf("create staged file: %w", err)
 	}
+	// On any write failure: close + remove the temp file. Failures from
+	// those cleanup calls are not useful to surface — the operator
+	// can't act on them and the original write error is the real news.
+	bail := func(werr error) (string, func(), error) {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return "", nil, werr
+	}
 	for i, op := range ops {
 		if i > 0 {
-			if _, err := f.WriteString("\n"); err != nil {
-				f.Close()
-				os.Remove(f.Name())
-				return "", nil, err
+			if _, werr := f.WriteString("\n"); werr != nil {
+				return bail(werr)
 			}
 		}
-		if _, err := f.WriteString(op.NFT()); err != nil {
-			f.Close()
-			os.Remove(f.Name())
-			return "", nil, err
+		if _, werr := f.WriteString(op.NFT()); werr != nil {
+			return bail(werr)
 		}
 	}
-	if _, err := f.WriteString("\n"); err != nil {
-		f.Close()
-		os.Remove(f.Name())
-		return "", nil, err
+	if _, werr := f.WriteString("\n"); werr != nil {
+		return bail(werr)
 	}
-	if err := f.Close(); err != nil {
-		os.Remove(f.Name())
-		return "", nil, err
+	if cerr := f.Close(); cerr != nil {
+		_ = os.Remove(f.Name())
+		return "", nil, cerr
 	}
-	path := f.Name()
-	cleanup := func() { _ = os.Remove(path) }
+	path = f.Name()
+	cleanup = func() { _ = os.Remove(path) }
 	return path, cleanup, nil
 }
 
@@ -282,14 +284,14 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		os.Remove(dst)
+		_ = out.Close()
+		_ = os.Remove(dst)
 		return err
 	}
 	return out.Close()

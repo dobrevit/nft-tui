@@ -51,13 +51,15 @@ func sparkline(samples []float64) string {
 	return b.String()
 }
 
-// pushSample appends v to buf, keeping at most cap samples. Returns
+// pushSample appends v to buf, keeping at most maxLen samples. Returns
 // the (possibly trimmed) result. Used as the ring-buffer primitive on
-// the explorer's per-rule sample maps.
-func pushSample(buf []float64, v float64, cap int) []float64 {
+// the explorer's per-rule sample maps. The parameter is named
+// `maxLen` rather than `cap` to avoid shadowing the predeclared
+// `cap` builtin.
+func pushSample(buf []float64, v float64, maxLen int) []float64 {
 	buf = append(buf, v)
-	if len(buf) > cap {
-		buf = buf[len(buf)-cap:]
+	if len(buf) > maxLen {
+		buf = buf[len(buf)-maxLen:]
 	}
 	return buf
 }

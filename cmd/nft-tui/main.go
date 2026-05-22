@@ -64,12 +64,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "      or, for dev without root: unshare -rn ./nft-tui")
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	rs, err := conn.ListRuleset()
 	if err != nil {
+		// `defer conn.Close()` won't run after os.Exit; close explicitly
+		// so we don't leak the netlink fd into the kernel even briefly.
+		_ = conn.Close()
 		fmt.Fprintf(os.Stderr, "nft-tui: list ruleset: %v\n", err)
-		os.Exit(1)
+		os.Exit(1) //nolint:gocritic // intentional: we just closed conn above
 	}
 
 	if *dumpOnly {

@@ -1,0 +1,103 @@
+# golangci-lint config.
+#
+# Curated linter set — what we want from CI:
+#   - correctness (govet, staticcheck, errcheck, ineffassign, unused)
+#   - security (gosec)
+#   - style consistency (gofmt, goimports, gocritic, revive)
+#   - simplification (gosimple, unconvert)
+#
+# Skipped:
+#   - golint    (deprecated; revive supersedes)
+#   - depguard  (no allow/block list yet; revisit when we add deps)
+#   - exhaustruct (forces every struct literal to fill every field;
+#                  noisy for the tview builder pattern we use)
+#   - gci       (we don't enforce a specific import grouping order
+#                beyond what gofmt + goimports default to)
+
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags:
+    # Make sure tags=integration files are checked too.
+    - integration
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - unconvert
+    - gocritic
+    - revive
+    - bodyclose
+    - misspell
+    - prealloc
+    - copyloopvar
+    - whitespace
+
+  settings:
+    errcheck:
+      # Don't flag every fmt.Fprint*. They write to TextView /
+      # strings.Builder which never error in practice.
+      exclude-functions:
+        - (*strings.Builder).WriteString
+        - (*strings.Builder).WriteByte
+        - (*strings.Builder).WriteRune
+        - fmt.Fprintf(*github.com/rivo/tview.TextView)
+        - fmt.Fprintln
+        - fmt.Fprintf
+
+    gosec:
+      # Tune the most aggressive rules. We legitimately:
+      #   - shell out to `nft` with arguments we control (G204)
+      #   - read paths supplied by the operator via :w / :r (G304)
+      excludes:
+        - G204    # subprocess with variable args — nft is on PATH, args are static
+        - G304    # file inclusion via variable — operator-provided paths
+
+    revive:
+      # Default rules + a handful of stricter ones.
+      rules:
+        - name: var-naming
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: unused-parameter
+          disabled: true   # tview callbacks accept params we ignore
+        - name: package-comments
+          disabled: true   # not every internal/ package has a doc comment
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - ifElseChain     # nft renderer has many if-else cmp checks; the chain reads better
+        - paramTypeCombine
+        - hugeParam       # tview widgets are large by design
+
+    staticcheck:
+      checks:
+        - all
+        - '-ST1000'   # missing package doc on internal/
+
+  exclusions:
+    rules:
+      # Test files: relax expectations.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - gocritic
+          - prealloc
+      # Integration tests use os/exec + nft heavily; G204 is
+      # already excluded above but the test files also use t.TempDir
+      # paths in ways gosec doesn't love.
+      - path: _integration_test\.go
+        linters:
+          - gosec

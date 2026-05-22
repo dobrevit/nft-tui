@@ -229,13 +229,12 @@ func TestIntegration_RestoreRejectsInvalidSnapshot(t *testing.T) {
 	}
 }
 
-// mustNFT runs `nft <stmt>` and fails the test on non-zero exit.
+// mustNFT runs `nft -f -` with stmt piped on stdin (so arbitrary nft
+// commands round-trip without arg-vs-positional-token games) and
+// fails the test on non-zero exit.
 func mustNFT(t *testing.T, stmt string) {
 	t.Helper()
-	cmd := exec.Command("nft", strings.Fields(stmt)[0], strings.Join(strings.Fields(stmt)[1:], " "))
-	// nft expects each top-level token as a separate argv; the cleanest
-	// invocation for arbitrary statements is to pipe via stdin.
-	cmd = exec.Command("nft", "-f", "-")
+	cmd := exec.Command("nft", "-f", "-")
 	cmd.Stdin = strings.NewReader(stmt + "\n")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

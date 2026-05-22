@@ -118,8 +118,8 @@ func themeMono() *Theme {
 	}
 }
 
-// String reports the comma-separated list of theme names. Used by the
-// --theme flag help text.
+// ThemeNames returns the comma-separated list of theme names. Used by
+// the --theme flag help text.
 func ThemeNames() string {
 	names := make([]string, 0, len(AvailableThemes()))
 	for _, t := range AvailableThemes() {

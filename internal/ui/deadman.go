@@ -78,8 +78,7 @@ func (e *Explorer) buildDeadmanPage() tview.Primitive {
 func (e *Explorer) deadmanInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 	switch e.deadman.phase {
 	case dmConfirm:
-		switch ev.Key() {
-		case tcell.KeyEscape:
+		if ev.Key() == tcell.KeyEscape {
 			e.closeDeadman("[yellow]restore cancelled[-]")
 			return nil
 		}
@@ -88,8 +87,7 @@ func (e *Explorer) deadmanInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 	case dmCountdown:
-		switch ev.Key() {
-		case tcell.KeyEscape:
+		if ev.Key() == tcell.KeyEscape {
 			e.deadman.cancelOnce.Do(func() { close(e.deadman.cancelCh) })
 			return nil
 		}
