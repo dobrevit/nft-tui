@@ -51,9 +51,9 @@ func Watch(ctx context.Context, coalesce time.Duration) (<-chan ChangeEvent, err
 		defer conn.CloseLasting()
 
 		var (
-			pending     bool
-			debounce    *time.Timer
-			debounceCh  <-chan time.Time
+			pending    bool
+			debounce   *time.Timer
+			debounceCh <-chan time.Time
 		)
 		armDebounce := func() {
 			if debounce == nil {

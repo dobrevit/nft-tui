@@ -28,11 +28,15 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: gofmt
+        # `gofmt -l .` only checks the top-level directory, not the
+        # subtree — easy to miss. List every .go file under the repo
+        # explicitly so subpackage drift is caught.
         run: |
-          diff=$(gofmt -l .)
-          if [ -n "$diff" ]; then
+          files=$(gofmt -l $(find . -name '*.go' -not -path './.git/*'))
+          if [ -n "$files" ]; then
             echo "::error::gofmt would change the following files:"
-            echo "$diff"
+            echo "$files"
+            echo "Run 'gofmt -w .' or 'go fmt ./...' locally and recommit."
             exit 1
           fi
       - name: go vet

@@ -72,9 +72,9 @@ type Explorer struct {
 	// editorViews is the Flex that contains both the form and the raw
 	// TextArea; ResizeItem on one of them switches which is visible
 	// (and gives the size to the other).
-	editorViews *tview.Flex
-	editorView  editorViewMode
-	editorMode  editorMode
+	editorViews  *tview.Flex
+	editorView   editorViewMode
+	editorMode   editorMode
 	editorTarget editorTarget
 	formFields   *formFields
 

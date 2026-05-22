@@ -8,15 +8,15 @@ import (
 
 func TestParseCommand(t *testing.T) {
 	cases := []struct {
-		in      string
-		kind    cmdKind
-		arg     string
+		in   string
+		kind cmdKind
+		arg  string
 	}{
 		{"", cmdSearch, ""},
 		{"10.0.0.0", cmdSearch, "10.0.0.0"},
 		{"w /tmp/snap.nft", cmdWrite, "/tmp/snap.nft"},
 		{"write   /tmp/snap.nft", cmdWrite, "/tmp/snap.nft"},
-		{"w", cmdWrite, ""},      // verb alone — UI prompts for path
+		{"w", cmdWrite, ""}, // verb alone — UI prompts for path
 		{"r /tmp/snap.nft", cmdRead, "/tmp/snap.nft"},
 		{"restore /tmp/snap.nft", cmdRead, "/tmp/snap.nft"},
 		{"read /tmp/snap.nft", cmdRead, "/tmp/snap.nft"},

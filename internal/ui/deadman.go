@@ -17,13 +17,13 @@ import (
 type deadmanPhase int
 
 const (
-	dmIdle    deadmanPhase = iota // overlay hidden
-	dmConfirm                     // showing "press Y to apply, Esc to cancel"
-	dmApply                       // snapshotting + restoring (transient)
-	dmCountdown                   // restored, countdown ticking
-	dmRolling                     // rollback in flight
-	dmDone                        // overlay hidden; final state in status bar
-	dmError                       // rollback failed — overlay shows error
+	dmIdle      deadmanPhase = iota // overlay hidden
+	dmConfirm                       // showing "press Y to apply, Esc to cancel"
+	dmApply                         // snapshotting + restoring (transient)
+	dmCountdown                     // restored, countdown ticking
+	dmRolling                       // rollback in flight
+	dmDone                          // overlay hidden; final state in status bar
+	dmError                         // rollback failed — overlay shows error
 )
 
 // deadmanWindow is how long the operator has to confirm after a

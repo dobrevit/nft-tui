@@ -149,7 +149,10 @@ func TestOpsCopyIsDefensive(t *testing.T) {
 
 func TestDescribePrefix(t *testing.T) {
 	// Sanity check that the staged-changes tree gets the right glyph.
-	cases := []struct{ op Op; prefix string }{
+	cases := []struct {
+		op     Op
+		prefix string
+	}{
 		{&AddRule{Family: model.FamilyINet, Table: "f", Chain: "i", Body: "accept"}, "+"},
 		{&InsertRule{Family: model.FamilyINet, Table: "f", Chain: "i", Body: "accept"}, "+"},
 		{&DeleteRule{Family: model.FamilyINet, Table: "f", Chain: "i", Handle: 1}, "-"},

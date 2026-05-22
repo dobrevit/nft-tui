@@ -21,18 +21,18 @@ func TestRuleMatches(t *testing.T) {
 		query string
 		want  bool
 	}{
-		{"", true},                 // empty query matches everything
-		{"42", true},               // handle
-		{"eth0", true},             // iif
-		{"ETH0", true},             // case-insensitive
-		{"5432", true},             // dport
-		{"postgres", true},         // comment
-		{"10.0.0", true},           // saddr substring
-		{"accept", true},           // verdict
-		{"drop", false},            // not present
-		{"eth1", false},            // wrong interface
-		{"reject", false},          // not present
-		{"established", false},     // not present
+		{"", true},             // empty query matches everything
+		{"42", true},           // handle
+		{"eth0", true},         // iif
+		{"ETH0", true},         // case-insensitive
+		{"5432", true},         // dport
+		{"postgres", true},     // comment
+		{"10.0.0", true},       // saddr substring
+		{"accept", true},       // verdict
+		{"drop", false},        // not present
+		{"eth1", false},        // wrong interface
+		{"reject", false},      // not present
+		{"established", false}, // not present
 	}
 	for _, c := range cases {
 		got := ruleMatches(r, c.query)
