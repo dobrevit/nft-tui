@@ -134,6 +134,14 @@ func (e *Explorer) buildSearchPage() tview.Primitive {
 		SetTitleAlign(tview.AlignLeft)
 
 	e.searchInput.SetChangedFunc(func(text string) {
+		// A command-shaped input freezes the search results — running an
+		// incremental search for `w /tmp/x` would produce noise.
+		if parseCommand(text).kind != cmdSearch {
+			e.searchResults.Clear()
+			e.searchResults.AddItem(
+				"[gray]press Enter to run command — Esc to cancel[-]", "", 0, nil)
+			return
+		}
 		e.refreshSearchResults(text)
 	})
 	e.searchInput.SetDoneFunc(func(key tcell.Key) {
@@ -142,7 +150,15 @@ func (e *Explorer) buildSearchPage() tview.Primitive {
 			e.pages.HidePage("search")
 			e.app.SetFocus(e.tree)
 		case tcell.KeyEnter:
-			// Move focus into the results list so j/k/Enter work there.
+			// If the input is a recognised command, execute and close.
+			// Otherwise it's a query — move focus into the results list.
+			c := parseCommand(e.searchInput.GetText())
+			if c.kind != cmdSearch {
+				e.pages.HidePage("search")
+				e.app.SetFocus(e.tree)
+				e.runCommand(c)
+				return
+			}
 			e.app.SetFocus(e.searchResults)
 		}
 	})
@@ -159,7 +175,7 @@ func (e *Explorer) buildSearchPage() tview.Primitive {
 		AddItem(e.searchInput, 1, 0, true).
 		AddItem(e.searchResults, 0, 1, false)
 	flex.SetBorder(true).
-		SetTitle(" Global search — type to filter, Enter for results, Esc to close ").
+		SetTitle(" : — search query, `w <path>` (snapshot), `r <path>` (restore) — Enter runs, Esc cancels ").
 		SetTitleAlign(tview.AlignLeft)
 
 	// Centre the modal at ~60% width.

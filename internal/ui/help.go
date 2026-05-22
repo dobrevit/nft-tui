@@ -15,10 +15,12 @@ const helpText = `[::b]nft-tui — keybindings[::-]
     h / ←     collapse / left     Enter     open node / toggle
     l / →     expand  / right
 
-  [yellow]Filter & search[-]
-    /         filter the current rule list
-    :         global search across the whole ruleset
-    Esc       cancel filter / close search
+  [yellow]Filter, search & commands[-]
+    /                filter the current rule list
+    :                global search OR command line:
+       :w <path>        snapshot the live ruleset to <path>
+       :r <path>        restore from a snapshot (with dead-man's switch)
+    Esc              cancel filter / close search
 
   [yellow]Yank & reload[-]
     y         yank the selected rule's nft syntax (OSC 52)
