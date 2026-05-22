@@ -261,9 +261,10 @@ func (e *Explorer) runDryRun() {
 	}()
 }
 
-// commitStaged applies the staged ChangeList atomically via `nft -f`.
-// Gated on a previously-passing dry-run so an operator can't fat-finger
-// F2 onto an unvalidated buffer.
+// commitStaged is the F2 entry point. Validates preconditions, then
+// shows the confirmation modal — the operator must explicitly
+// acknowledge before nft -f runs against the kernel. The actual apply
+// is in applyCommit (called from the modal's Done handler).
 func (e *Explorer) commitStaged() {
 	switch {
 	case e.committer == nil:
@@ -277,7 +278,17 @@ func (e *Explorer) commitStaged() {
 			"[yellow]press F3 first — commit requires a passing dry-run[-]")
 		return
 	}
+	e.commitConfirm.SetText(fmt.Sprintf(
+		"Apply %d staged change(s)?\n\nThis runs `nft -f` against the kernel.\nThe diff above is what will be applied.",
+		e.staged.Len()))
+	e.pages.ShowPage("confirm-commit")
+	e.app.SetFocus(e.commitConfirm)
+}
 
+// applyCommit runs the actual nft -f via Committer.Commit. Called
+// from the confirmation modal's Apply branch. Runs the nft invocation
+// in a goroutine so the UI stays responsive during apply.
+func (e *Explorer) applyCommit() {
 	ops := e.staged.Ops()
 	e.diffStatus.SetText("[gray]committing…[-]")
 
@@ -307,4 +318,21 @@ func (e *Explorer) commitStaged() {
 			e.setStatus(msg)
 		})
 	}()
+}
+
+// buildCommitConfirm constructs the tview.Modal that gates F2. The
+// SetText is updated each time commitStaged opens it so the operator
+// sees the actual change count.
+func (e *Explorer) buildCommitConfirm() tview.Primitive {
+	e.commitConfirm = tview.NewModal().
+		AddButtons([]string{"Apply", "Cancel"}).
+		SetDoneFunc(func(_ int, label string) {
+			e.pages.HidePage("confirm-commit")
+			if label == "Apply" {
+				e.applyCommit()
+			} else {
+				e.app.SetFocus(e.diffSummary)
+			}
+		})
+	return e.commitConfirm
 }

@@ -67,11 +67,12 @@ type Explorer struct {
 	editorTarget  editorTarget
 
 	// Diff/commit widgets.
-	diffSummary *tview.TextView
-	diffScript  *tview.TextView
-	diffStatus  *tview.TextView
-	dryRun      dryRunState
-	dryRunErr   string
+	diffSummary   *tview.TextView
+	diffScript    *tview.TextView
+	diffStatus    *tview.TextView
+	commitConfirm *tview.Modal
+	dryRun        dryRunState
+	dryRunErr     string
 
 	// Live monitor.
 	monitorTable  *tview.Table
@@ -367,7 +368,8 @@ func (e *Explorer) build() {
 		AddPage("editor", e.buildEditorPage(), true, false).
 		AddPage("diff", e.buildDiffPage(), true, false).
 		AddPage("monitor", e.buildMonitorPage(), true, false).
-		AddPage("deadman", e.buildDeadmanPage(), true, false)
+		AddPage("deadman", e.buildDeadmanPage(), true, false).
+		AddPage("confirm-commit", e.buildCommitConfirm(), false, false)
 
 	e.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.pages, 0, 1, true)
 	e.root.SetInputCapture(e.handleKey)
