@@ -94,6 +94,11 @@ type Explorer struct {
 	// the in-place merge couldn't apply. The status bar surfaces it; the
 	// tree is rebuilt on the next refresh after the user opens a new node.
 	kernelDrift bool
+
+	// refreshDelta is the time between the most recent two successful
+	// refreshes. Used by the live monitor and any view that needs to
+	// convert Counter deltas into pps / bps.
+	refreshDelta time.Duration
 }
 
 // NewExplorer builds the explorer screen against the supplied ruleset.
@@ -216,12 +221,14 @@ func (e *Explorer) applyRuleset(rs *model.Ruleset) {
 		return
 	}
 
-	// In-place counter merge — keeps every pointer in e.rs valid.
+	// In-place counter merge — keeps every pointer in e.rs valid and
+	// updates DeltaPackets / DeltaBytes via the model helper.
 	for k, old := range e.ruleIdx {
 		if nr, ok := newRules[k]; ok {
-			old.Counter = nr.Counter
+			old.MergeCountersFrom(nr)
 		}
 	}
+	e.refreshDelta = rs.FetchedAt.Sub(e.rs.FetchedAt)
 	e.rs.FetchedAt = rs.FetchedAt
 	e.refreshHeader()
 	e.refreshStatusBar(rs.FetchedAt)

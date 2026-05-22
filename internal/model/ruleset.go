@@ -84,6 +84,28 @@ type Rule struct {
 	SearchKey string `json:"-"`
 }
 
+// MergeCountersFrom updates r's Counter from other, computing
+// DeltaPackets and DeltaBytes as (new - old). Counter wrap-around is
+// guarded against (kernel never wraps a uint64 counter in practice,
+// but a rule can be reset).
+func (r *Rule) MergeCountersFrom(other *Rule) {
+	prev := r.Counter.Packets
+	prevBytes := r.Counter.Bytes
+	r.Counter.Packets = other.Counter.Packets
+	r.Counter.Bytes = other.Counter.Bytes
+	r.Counter.Present = other.Counter.Present
+	if other.Counter.Packets >= prev {
+		r.Counter.DeltaPackets = other.Counter.Packets - prev
+	} else {
+		r.Counter.DeltaPackets = 0
+	}
+	if other.Counter.Bytes >= prevBytes {
+		r.Counter.DeltaBytes = other.Counter.Bytes - prevBytes
+	} else {
+		r.Counter.DeltaBytes = 0
+	}
+}
+
 // RebuildSearchKey recomputes r.SearchKey from r's current field values.
 // Call after constructing or modifying a Rule so the filter / search
 // path sees fresh content.
@@ -108,6 +130,29 @@ type Counter struct {
 	Packets uint64
 	Bytes   uint64
 	Present bool // whether this rule actually carries a counter
+
+	// Per-tick deltas — packets and bytes accumulated between the last
+	// two refreshes. Populated by the in-place merge that happens on
+	// every refresh tick; zero on the first observation.
+	DeltaPackets uint64
+	DeltaBytes   uint64
+}
+
+// PPS returns packets-per-second over elapsed. Zero if elapsed is
+// non-positive (e.g. the first refresh).
+func (c Counter) PPS(elapsed time.Duration) float64 {
+	if elapsed <= 0 {
+		return 0
+	}
+	return float64(c.DeltaPackets) / elapsed.Seconds()
+}
+
+// BPS returns bytes-per-second over elapsed.
+func (c Counter) BPS(elapsed time.Duration) float64 {
+	if elapsed <= 0 {
+		return 0
+	}
+	return float64(c.DeltaBytes) / elapsed.Seconds()
 }
 
 type Set struct {
