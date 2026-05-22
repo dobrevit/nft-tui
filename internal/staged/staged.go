@@ -117,27 +117,42 @@ func (o *AddRule) Target() (model.Family, string, string) {
 	return o.Family, o.Table, o.Chain
 }
 
-// InsertRule places a rule at a specific position within a chain. position
-// is the handle of the rule before which the new rule is inserted (nft's
-// `insert rule … position H` actually inserts BEFORE handle H; nft's
-// `add rule … position H` inserts AFTER. We use the former.)
+// InsertRule places a rule at a specific position within a chain.
+// Position is the handle of the anchor rule. The After flag selects
+// the nft verb:
+//
+//	After=false  →  `insert rule … position H`   inserts BEFORE H
+//	After=true   →  `add rule … position H`      inserts AFTER  H
+//
+// (nft's distinction between `insert` and `add` here is real and
+// preserved by our renderer — re-applying a staged ops file produces
+// the same ordering as the live ruleset showed.)
 type InsertRule struct {
 	Family   model.Family
 	Table    string
 	Chain    string
 	Position uint64
+	After    bool
 	Body     string
 	Comment  string
 }
 
 func (o *InsertRule) NFT() string {
-	return fmt.Sprintf("insert rule %s %s %s position %d %s%s",
-		o.Family, o.Table, o.Chain, o.Position, o.Body, fmtComment(o.Comment))
+	verb := "insert"
+	if o.After {
+		verb = "add"
+	}
+	return fmt.Sprintf("%s rule %s %s %s position %d %s%s",
+		verb, o.Family, o.Table, o.Chain, o.Position, o.Body, fmtComment(o.Comment))
 }
 
 func (o *InsertRule) Describe() string {
-	return fmt.Sprintf("+ rule %s %s %s @position %d   %s",
-		o.Family, o.Table, o.Chain, o.Position, o.Body)
+	rel := "before"
+	if o.After {
+		rel = "after"
+	}
+	return fmt.Sprintf("+ rule %s %s %s %s handle %d   %s",
+		o.Family, o.Table, o.Chain, rel, o.Position, o.Body)
 }
 
 func (o *InsertRule) Target() (model.Family, string, string) {

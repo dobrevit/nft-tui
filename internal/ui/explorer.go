@@ -535,6 +535,20 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 	case 'd':
 		e.stageDeleteSelected()
 		return nil
+	case 'o':
+		if r := e.selectedRule(); r != nil {
+			e.openEditorInsert(r, true)
+		} else {
+			e.setStatus("[yellow]no rule selected — `o` inserts after the highlighted rule[-]")
+		}
+		return nil
+	case 'O':
+		if r := e.selectedRule(); r != nil {
+			e.openEditorInsert(r, false)
+		} else {
+			e.setStatus("[yellow]no rule selected — `O` inserts before the highlighted rule[-]")
+		}
+		return nil
 	case 'D':
 		e.openDiff()
 		return nil

@@ -31,12 +31,20 @@ func TestOpNFT(t *testing.T) {
 			want: `add rule ip nat postrouting oifname "eth0" masquerade`,
 		},
 		{
-			name: "insert at position",
+			name: "insert before handle",
 			op: &InsertRule{
 				Family: model.FamilyINet, Table: "filter", Chain: "input",
 				Position: 17, Body: `ip saddr 10.0.0.0/24 accept`,
 			},
 			want: `insert rule inet filter input position 17 ip saddr 10.0.0.0/24 accept`,
+		},
+		{
+			name: "insert after handle (add rule ... position H)",
+			op: &InsertRule{
+				Family: model.FamilyINet, Table: "filter", Chain: "input",
+				Position: 17, After: true, Body: `ip saddr 10.0.0.0/24 accept`,
+			},
+			want: `add rule inet filter input position 17 ip saddr 10.0.0.0/24 accept`,
 		},
 		{
 			name: "delete rule by handle",

@@ -11,21 +11,28 @@ import (
 	"github.com/dobrevit/nft-tui/internal/staged"
 )
 
-// editorMode selects between add-rule and edit-existing-rule semantics.
+// editorMode selects between add-rule, edit-existing-rule, and
+// insert-relative-to-rule semantics.
 type editorMode int
 
 const (
 	modeAdd editorMode = iota
 	modeEdit
+	// modeInsert stages a staged.InsertRule against editorTarget.position
+	// (anchor handle). editorTarget.after selects before vs after.
+	modeInsert
 )
 
 // editorTarget identifies what the editor will produce a StagedOp against.
-// Handle is zero in modeAdd.
+// handle  — non-zero in modeEdit (the rule to replace)
+// position/after — set in modeInsert (the anchor rule + relative side)
 type editorTarget struct {
-	family model.Family
-	table  string
-	chain  string
-	handle uint64
+	family   model.Family
+	table    string
+	chain    string
+	handle   uint64
+	position uint64
+	after    bool
 }
 
 // buildEditorPage assembles the modal-style page that hosts the rule
@@ -211,8 +218,49 @@ func (e *Explorer) currentEditorOp() staged.Op {
 			Body:    body,
 			Comment: comment,
 		}
+	case modeInsert:
+		return &staged.InsertRule{
+			Family:   e.editorTarget.family,
+			Table:    e.editorTarget.table,
+			Chain:    e.editorTarget.chain,
+			Position: e.editorTarget.position,
+			After:    e.editorTarget.after,
+			Body:     body,
+			Comment:  comment,
+		}
 	}
 	return nil
+}
+
+// openEditorInsert opens the editor in modeInsert anchored on r. The
+// `after` flag selects between `insert rule … position H` (before)
+// and `add rule … position H` (after).
+func (e *Explorer) openEditorInsert(r *model.Rule, after bool) {
+	if !e.writeMode {
+		e.setStatus("[yellow]read-only mode — start with --write to insert[-]")
+		return
+	}
+	c := r.Chain
+	e.editorMode = modeInsert
+	e.editorTarget = editorTarget{
+		family:   c.Table.Family,
+		table:    c.Table.Name,
+		chain:    c.Name,
+		position: r.Handle,
+		after:    after,
+	}
+	rel := "before"
+	if after {
+		rel = "after"
+	}
+	e.editorTitle.SetText(fmt.Sprintf(
+		"[::b]Insert rule %s handle %d[::-]   %s %s %s",
+		rel, r.Handle, c.Table.Family, c.Table.Name, c.Name))
+	e.editorBody.SetText("", true)
+	e.editorComment.SetText("")
+	e.refreshEditorPreview()
+	e.pages.ShowPage("editor")
+	e.app.SetFocus(e.editorBody)
 }
 
 // stageFromEditor appends the current editor contents to the staged list

@@ -28,7 +28,10 @@ const helpText = `[::b]nft-tui — keybindings[::-]
     m         live monitor (top-N by pps/bps/Δpkts)
 
   [yellow]Edit (requires --write)[-]
-    a         add a rule to the current chain
+    a         add a rule to the current chain (append)
+    o / O     insert after / before the selected rule
+    e         edit (replace) the selected rule
+    d         stage a delete of the selected rule
     D         open the staged-changes / diff page
 
   [yellow]Diff page[-]
