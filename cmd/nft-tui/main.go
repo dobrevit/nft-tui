@@ -26,8 +26,16 @@ func main() {
 		writeMode    = flag.Bool("write", false, "enable edit/commit affordances (a / e / d keys, commit screen). Default is read-only.")
 		auditDir     = flag.String("audit-dir", nft.DefaultAuditDir(), "directory where committed nft scripts are archived")
 		useMonitor   = flag.Bool("monitor", true, "subscribe to kernel netlink events for immediate refresh on external changes")
+		theme        = flag.String("theme", "default", "colour theme: "+ui.ThemeNames())
 	)
 	flag.Parse()
+
+	t, ok := ui.LookupTheme(*theme)
+	if !ok {
+		fmt.Fprintln(os.Stderr, ui.ThemeError(*theme))
+		os.Exit(2)
+	}
+	t.Apply()
 
 	conn, err := nft.NewConn()
 	if err != nil {
