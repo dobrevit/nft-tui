@@ -1,6 +1,12 @@
 module github.com/dobrevit/nft-tui
 
-go 1.26.2
+// `go` is the supported floor — bumped by `go mod tidy` to match what
+// our dependencies actually need. `toolchain` pins the version CI
+// builds with; Go ≥ 1.21 auto-downloads it on first invocation so
+// contributor laptops and the release VM stay byte-for-byte aligned.
+go 1.24.0
+
+toolchain go1.26.2
 
 require (
 	github.com/gdamore/tcell/v2 v2.13.9
