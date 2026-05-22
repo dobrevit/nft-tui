@@ -1,6 +1,7 @@
 package nft
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -86,14 +87,102 @@ func (c *Committer) Commit(ctx context.Context, ops []staged.Op) (auditPath stri
 // ErrNoChanges signals that Commit was called with no staged ops.
 var ErrNoChanges = errors.New("no staged changes to commit")
 
+// Snapshot writes the current kernel ruleset to path as a self-contained
+// nft script. The output is exactly what `nft list ruleset` produces,
+// preceded by a header comment block (timestamp, host, operator UID)
+// so the file is self-documenting when grepped or git-committed.
+//
+// `nft list ruleset` is canonical and round-trips through `nft -f`, so
+// a Snapshot followed by a Restore is identity on the structural
+// content. (Counters are lost on restore — they're not part of the
+// ruleset declaration.)
+func (c *Committer) Snapshot(ctx context.Context, path string) error {
+	bin := c.bin()
+	out, err := exec.CommandContext(ctx, bin, "list", "ruleset").Output()
+	if err != nil {
+		return fmt.Errorf("%s list ruleset: %w", bin, exitDetail(err))
+	}
+
+	host, _ := os.Hostname()
+	header := fmt.Sprintf(
+		"# nft-tui snapshot\n# created: %s\n# host:    %s\n# uid:     %d\n\n",
+		time.Now().Format(time.RFC3339), host, os.Getuid(),
+	)
+	body := append([]byte(header), out...)
+	if err := os.WriteFile(path, body, 0o640); err != nil {
+		return fmt.Errorf("write snapshot %s: %w", path, err)
+	}
+	return nil
+}
+
+// Restore replaces the live ruleset with the contents of path,
+// atomically. The kernel-side sequence is:
+//
+//	flush ruleset
+//	<contents of path>
+//
+// applied as a single `nft -f` transaction so there is never a window
+// with no rules. The snapshot is dry-run first via `nft -c`; the
+// kernel is not touched if validation fails.
+//
+// CAUTION: this is the most destructive operation in the tool. The UI
+// wraps it in a 60-second dead-man's switch (see internal/ui/deadman).
+// Direct callers must understand they're committing to "wipe and
+// replace" semantics.
+func (c *Committer) Restore(ctx context.Context, path string) error {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read snapshot %s: %w", path, err)
+	}
+	script := append([]byte("flush ruleset\n"), body...)
+
+	if err := c.runStdin(ctx, script, "-c", "-f", "-"); err != nil {
+		return fmt.Errorf("restore dry-run failed: %w", err)
+	}
+	if err := c.runStdin(ctx, script, "-f", "-"); err != nil {
+		return fmt.Errorf("restore failed: %w", err)
+	}
+	return nil
+}
+
+// bin returns the resolved nft binary path. Empty NFTPath means
+// "look in $PATH".
+func (c *Committer) bin() string {
+	if c.NFTPath != "" {
+		return c.NFTPath
+	}
+	return "nft"
+}
+
+// runStdin invokes nft with args and feeds `script` on stdin, capturing
+// combined output and surfacing it on non-zero exit.
+func (c *Committer) runStdin(ctx context.Context, script []byte, args ...string) error {
+	cmd := exec.CommandContext(ctx, c.bin(), args...)
+	cmd.Stdin = bytes.NewReader(script)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s %s: %w\n%s",
+		c.bin(), strings.Join(args, " "), err,
+		strings.TrimSpace(string(out)))
+}
+
+// exitDetail enriches an *exec.ExitError with its captured stderr
+// (if any), so callers see what nft actually said.
+func exitDetail(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && len(ee.Stderr) > 0 {
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(ee.Stderr)))
+	}
+	return err
+}
+
 // run invokes nft with the supplied args, capturing combined output and
 // returning it wrapped in an error on non-zero exit. Context cancellation
 // kills the child.
 func (c *Committer) run(ctx context.Context, args ...string) error {
-	bin := c.NFTPath
-	if bin == "" {
-		bin = "nft"
-	}
+	bin := c.bin()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	out, err := cmd.CombinedOutput()
 	if err == nil {

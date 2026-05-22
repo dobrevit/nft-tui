@@ -150,6 +150,85 @@ func extractHandle(output, needle string) uint64 {
 	return 0
 }
 
+// TestIntegration_SnapshotRestore round-trips the ruleset: snapshot to
+// disk, mutate the kernel, restore from the snapshot, verify the
+// kernel state matches the snapshotted baseline.
+func TestIntegration_SnapshotRestore(t *testing.T) {
+	if _, err := exec.LookPath("nft"); err != nil {
+		t.Skip("nft binary not on $PATH")
+	}
+	mustNFT(t, "flush ruleset")
+	mustNFT(t, "add table inet filter")
+	mustNFT(t, "add chain inet filter input { type filter hook input priority 0; }")
+	mustNFT(t, "add rule inet filter input tcp dport 22 counter accept")
+
+	c := &Committer{}
+	snapPath := t.TempDir() + "/baseline.nft"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := c.Snapshot(ctx, snapPath); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	body, err := os.ReadFile(snapPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(body), "# nft-tui snapshot") {
+		t.Errorf("snapshot missing header; got:\n%s", body)
+	}
+	if !strings.Contains(string(body), "tcp dport 22") {
+		t.Errorf("snapshot missing rule:\n%s", body)
+	}
+
+	// Mutate the kernel — add a divergent rule.
+	mustNFT(t, "add rule inet filter input tcp dport 9999 drop")
+	out, _ := exec.Command("nft", "list", "chain", "inet", "filter", "input").CombinedOutput()
+	if !strings.Contains(string(out), "dport 9999") {
+		t.Fatalf("divergent rule did not stick:\n%s", out)
+	}
+
+	// Restore — the divergent rule must disappear, the original must stay.
+	if err := c.Restore(ctx, snapPath); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	out, _ = exec.Command("nft", "list", "chain", "inet", "filter", "input").CombinedOutput()
+	if strings.Contains(string(out), "dport 9999") {
+		t.Errorf("post-restore: divergent rule still present:\n%s", out)
+	}
+	if !strings.Contains(string(out), "dport 22") {
+		t.Errorf("post-restore: baseline rule missing:\n%s", out)
+	}
+}
+
+// TestIntegration_RestoreRejectsInvalidSnapshot ensures the dry-run
+// catches a malformed snapshot before the kernel is touched.
+func TestIntegration_RestoreRejectsInvalidSnapshot(t *testing.T) {
+	if _, err := exec.LookPath("nft"); err != nil {
+		t.Skip("nft binary not on $PATH")
+	}
+	mustNFT(t, "flush ruleset")
+	mustNFT(t, "add table inet filter")
+	mustNFT(t, "add chain inet filter input { type filter hook input priority 0; }")
+	mustNFT(t, "add rule inet filter input tcp dport 22 accept")
+
+	bad := t.TempDir() + "/bogus.nft"
+	if err := os.WriteFile(bad, []byte("this is not valid nft syntax\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := &Committer{}
+	if err := c.Restore(ctx, bad); err == nil {
+		t.Fatal("Restore on garbage file unexpectedly succeeded")
+	}
+	// The original rule must still be present — kernel untouched.
+	out, _ := exec.Command("nft", "list", "chain", "inet", "filter", "input").CombinedOutput()
+	if !strings.Contains(string(out), "dport 22") {
+		t.Errorf("kernel mutated despite dry-run failure:\n%s", out)
+	}
+}
+
 // mustNFT runs `nft <stmt>` and fails the test on non-zero exit.
 func mustNFT(t *testing.T, stmt string) {
 	t.Helper()
