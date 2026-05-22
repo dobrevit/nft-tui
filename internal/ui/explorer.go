@@ -75,8 +75,15 @@ type Explorer struct {
 
 	// Live monitor.
 	monitorTable  *tview.Table
+	monitorSpark  *tview.TextView
 	monitorSort   sortMetric
 	monitorPaused bool
+
+	// sparkBuffers is the per-rule ring buffer of pps samples used by
+	// the monitor sparkline. Keyed by ruleKey; trimmed to sparkSamples
+	// on every push. Entries for rules that disappear are pruned in
+	// indexRules.
+	sparkBuffers map[string][]float64
 
 	host string
 
@@ -136,7 +143,8 @@ func NewExplorer(
 }
 
 // indexRules rebuilds the (family, table, chain, handle) → *Rule index from
-// the current Ruleset. Called after every full reload.
+// the current Ruleset. Called after every full reload. Also prunes
+// sparkBuffers entries for rules that no longer exist.
 func (e *Explorer) indexRules() {
 	e.ruleIdx = make(map[string]*model.Rule)
 	for _, t := range e.rs.Tables {
@@ -145,6 +153,15 @@ func (e *Explorer) indexRules() {
 				e.ruleIdx[ruleKey(r)] = r
 			}
 		}
+	}
+	if e.sparkBuffers != nil {
+		for k := range e.sparkBuffers {
+			if _, alive := e.ruleIdx[k]; !alive {
+				delete(e.sparkBuffers, k)
+			}
+		}
+	} else {
+		e.sparkBuffers = make(map[string][]float64)
 	}
 }
 
@@ -235,6 +252,7 @@ func (e *Explorer) applyRuleset(rs *model.Ruleset) {
 	}
 	e.refreshDelta = rs.FetchedAt.Sub(e.rs.FetchedAt)
 	e.rs.FetchedAt = rs.FetchedAt
+	e.recordSparkSamples()
 	e.refreshHeader()
 	e.refreshStatusBar(rs.FetchedAt)
 	if e.currentChain != nil {

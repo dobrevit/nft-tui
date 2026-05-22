@@ -48,16 +48,86 @@ func (e *Explorer) buildMonitorPage() tview.Primitive {
 	e.monitorTable.SetBorder(true).
 		SetTitleAlign(tview.AlignLeft)
 
+	e.monitorSpark = tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(false)
+	e.monitorSpark.SetBorder(true).
+		SetTitle(" Sparkline (selected rule, pps) ").
+		SetTitleAlign(tview.AlignLeft)
+
 	footer := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
-		SetText("[yellow]s[-] cycle sort   [yellow]p[-] pause/resume   [yellow]Esc[-] back")
+		SetText("[yellow]s[-] cycle sort   [yellow]p[-] pause/resume   [yellow]j/k[-] move   [yellow]Esc[-] back")
+
+	// Update the sparkline when the user moves the selection.
+	e.monitorTable.SetSelectionChangedFunc(func(_, _ int) {
+		e.refreshMonitorSpark()
+	})
 
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(e.monitorTable, 0, 1, true).
+		AddItem(e.monitorTable, 0, 3, true).
+		AddItem(e.monitorSpark, 4, 0, false).
 		AddItem(footer, 1, 0, false)
 	flex.SetInputCapture(e.monitorInputCapture)
 	return flex
+}
+
+// recordSparkSamples is called from applyRuleset after the in-place
+// counter merge. For every rule with a counter, it pushes the current
+// pps value into the rule's ring buffer.
+func (e *Explorer) recordSparkSamples() {
+	if e.sparkBuffers == nil {
+		e.sparkBuffers = make(map[string][]float64)
+	}
+	elapsed := e.refreshDelta
+	if elapsed <= 0 {
+		return // first tick — nothing to record yet
+	}
+	for k, r := range e.ruleIdx {
+		if !r.Counter.Present {
+			continue
+		}
+		e.sparkBuffers[k] = pushSample(
+			e.sparkBuffers[k], r.Counter.PPS(elapsed), sparkSamples)
+	}
+}
+
+// selectedMonitorRule returns the rule corresponding to the monitor
+// table's current selection, or nil if no row is selected. The data is
+// reconstructed by re-scanning the rules in the same order
+// populateMonitorTable used; we don't keep the slice around between
+// refreshes so this stays consistent with the table contents.
+func (e *Explorer) selectedMonitorRule() *model.Rule {
+	row, _ := e.monitorTable.GetSelection()
+	idx := row - 1
+	if idx < 0 {
+		return nil
+	}
+	rows := e.collectMonitorRows()
+	e.sortMonitorRows(rows)
+	const top = 50
+	if len(rows) > top {
+		rows = rows[:top]
+	}
+	if idx >= len(rows) {
+		return nil
+	}
+	return rows[idx].rule
+}
+
+// refreshMonitorSpark repaints the bottom sparkline pane to reflect
+// whichever row is currently selected in the table.
+func (e *Explorer) refreshMonitorSpark() {
+	r := e.selectedMonitorRule()
+	if r == nil {
+		e.monitorSpark.SetText("[gray](select a row to see its pps history)[-]")
+		return
+	}
+	buf := e.sparkBuffers[ruleKey(r)]
+	header := fmt.Sprintf("rule %s %s › %s  handle %d",
+		r.Chain.Table.Family, r.Chain.Table.Name, r.Chain.Name, r.Handle)
+	e.monitorSpark.SetText(header + "\n" + formatSparkline(buf, "pps"))
 }
 
 func (e *Explorer) monitorInputCapture(ev *tcell.EventKey) *tcell.EventKey {
@@ -168,6 +238,8 @@ func (e *Explorer) populateMonitorTable(rows []monitorRow) {
 		e.monitorTable.SetCell(i+1, 4, dataCell(humanCount(mr.rule.Counter.DeltaPackets)))
 		e.monitorTable.SetCell(i+1, 5, dataCell(truncate(mr.rule.NFT, 70)))
 	}
+	// Keep the sparkline pane in sync with whatever is selected.
+	e.refreshMonitorSpark()
 }
 
 func (e *Explorer) monitorTitle(paused bool) string {
