@@ -244,8 +244,8 @@ func (e *Explorer) doRefresh() {
 // applyRuleset merges a freshly-fetched ruleset into the live UI. If the
 // structure matches (same rule handles, same chain layout), counters are
 // updated in place — tree expansion, selection, and scroll positions are
-// preserved. Structural changes flip kernelDrift on; the user can press
-// `R` to do a full rebuild.
+// preserved. Structural changes automatically trigger a tree rebuild
+// that does its best to preserve the user's current selection.
 func (e *Explorer) applyRuleset(rs *model.Ruleset) {
 	newRules := map[string]*model.Rule{}
 	for _, t := range rs.Tables {
@@ -267,8 +267,7 @@ func (e *Explorer) applyRuleset(rs *model.Ruleset) {
 	}
 
 	if structural {
-		e.kernelDrift = true
-		e.refreshStatusBar(rs.FetchedAt)
+		e.rebuildPreservingSelection(rs)
 		return
 	}
 
@@ -293,8 +292,8 @@ func (e *Explorer) applyRuleset(rs *model.Ruleset) {
 }
 
 // FullRebuild reloads the ruleset from scratch and rebuilds the tree.
-// Called from the `R` keybinding when kernelDrift is set, or manually by
-// the user who suspects external changes.
+// Called from the `R` keybinding (manual override) or after a successful
+// commit (where the new handles need re-indexing).
 func (e *Explorer) FullRebuild() {
 	if e.fetch == nil {
 		return
@@ -304,12 +303,62 @@ func (e *Explorer) FullRebuild() {
 		e.setStatus(fmt.Sprintf("[red]rebuild failed: %v[-]", err))
 		return
 	}
+	e.rebuildPreservingSelection(rs)
+}
+
+// rebuildPreservingSelection swaps in rs as the live ruleset, rebuilds
+// the tree, and tries to re-select whatever the user had open. Tree
+// expansion state is lost (a new node tree replaces the old) but the
+// currently-viewed chain (if it still exists by family/table/name)
+// stays selected so the user's mental focus is preserved.
+func (e *Explorer) rebuildPreservingSelection(rs *model.Ruleset) {
+	// Capture the lightweight identity of the currently-shown node
+	// BEFORE we swap the model pointers out from under us.
+	type chainID struct {
+		family model.Family
+		table  string
+		chain  string
+	}
+	var prev *chainID
+	if e.currentChain != nil {
+		prev = &chainID{
+			family: e.currentChain.Table.Family,
+			table:  e.currentChain.Table.Name,
+			chain:  e.currentChain.Name,
+		}
+	}
+
 	e.rs = rs
 	e.currentChain = nil
 	e.kernelDrift = false
 	e.indexRules()
 	e.refreshHeader()
 	e.refreshTree()
+
+	// Try to re-locate the previously-viewed chain in the new tree.
+	if prev != nil {
+		for _, t := range rs.Tables {
+			if t.Family != prev.family || t.Name != prev.table {
+				continue
+			}
+			for _, c := range t.Chains {
+				if c.Name != prev.chain {
+					continue
+				}
+				if node, ok := e.nodeByChain[c]; ok {
+					e.tree.SetCurrentNode(node)
+				}
+				return
+			}
+		}
+		// Previously-viewed chain is gone (deleted externally).
+		e.detail.SwitchToPage("info")
+		e.info.SetText(fmt.Sprintf(
+			"[yellow]The chain %s %s › %s was removed externally.[-]",
+			prev.family, prev.table, prev.chain))
+		e.refreshStatusBar(rs.FetchedAt)
+		return
+	}
 	e.detail.SwitchToPage("info")
 	e.info.SetText("[gray]Reloaded. Select a chain, table, or set on the left.[-]")
 	e.refreshStatusBar(rs.FetchedAt)
@@ -325,7 +374,7 @@ func (e *Explorer) refreshHeader() {
 func (e *Explorer) refreshStatusBar(fetched time.Time) {
 	drift := ""
 	if e.kernelDrift {
-		drift = "  [yellow]kernel changed — press R to reload[-]"
+		drift = "  [yellow]auto-rebuild failed — press R to retry[-]"
 	}
 	mode := "RO"
 	if e.writeMode {
