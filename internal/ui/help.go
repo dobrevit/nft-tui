@@ -43,6 +43,11 @@ const helpText = `[::b]nft-tui — keybindings[::-]
     q         quit
     ?         this help overlay (toggle)
 
+  [yellow]Mouse[-]
+    click           select tree node, rule row, list item, modal button
+    wheel           scroll tree / rule list / sparkline pane
+    drag (table)    select range (Δ-pkts column on monitor)
+
                     Press ? or Esc to close
 `
 

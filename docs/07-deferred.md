@@ -69,8 +69,17 @@ is the right shape; do it once we see one in the wild.
 
 ### Mouse support polish
 
-`tview.Application.EnableMouse(true)` is already on but we never
-tested the click-targets carefully (especially modal overlays).
+Audited. `EnableMouse(true)` is on; tview's primitive defaults cover
+the primary interactions (click trees / table rows / list items /
+modal buttons, scroll wheel on text views and tables). Modal-overlay
+leakage scenarios — clicks on the padding around a centred overlay
+falling through to the underlying main page — were NOT exercised
+because reproducing them needs an interactive terminal. Re-open if a
+user reports a specific click going to the wrong widget; the fix is
+likely a `Box`-with-mouse-capture wrapper around each centred
+overlay.
+
+The help overlay now documents the primary mouse interactions.
 
 ## Code-quality items
 
