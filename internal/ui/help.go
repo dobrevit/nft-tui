@@ -26,6 +26,7 @@ const helpText = `[::b]nft-tui — keybindings[::-]
     y         yank the selected rule's nft syntax (OSC 52)
     R         full reload (after kernel drift)
     m         live monitor (top-N by pps/bps/Δpkts)
+    c         cycle rule-list columns (default/minimal/debug/wide)
 
   [yellow]Edit (requires --write)[-]
     a         add a rule to the current chain (append)

@@ -32,6 +32,7 @@ func main() {
 		auditDir     = flag.String("audit-dir", nft.DefaultAuditDir(), "directory where committed nft scripts are archived")
 		useMonitor   = flag.Bool("monitor", true, "subscribe to kernel netlink events for immediate refresh on external changes")
 		theme        = flag.String("theme", "default", "colour theme: "+ui.ThemeNames())
+		columns      = flag.String("columns", "default", "rule-list column preset: "+ui.ColumnPresetNames())
 		showVersion  = flag.Bool("version", false, "print version information and exit")
 	)
 	flag.Parse()
@@ -47,6 +48,13 @@ func main() {
 		os.Exit(2)
 	}
 	t.Apply()
+
+	colsIdx := ui.LookupColumnPreset(*columns)
+	if colsIdx < 0 {
+		fmt.Fprintf(os.Stderr, "nft-tui: unknown columns preset %q — choose one of: %s\n",
+			*columns, ui.ColumnPresetNames())
+		os.Exit(2)
+	}
 
 	conn, err := nft.NewConn()
 	if err != nil {
@@ -71,7 +79,7 @@ func main() {
 
 	app := tview.NewApplication()
 	committer := &nft.Committer{AuditDir: *auditDir}
-	exp := ui.NewExplorer(app, rs, conn.ListRuleset, *refreshEvery, *writeMode, committer)
+	exp := ui.NewExplorer(app, rs, conn.ListRuleset, *refreshEvery, *writeMode, committer, colsIdx)
 	exp.StartRefresh()
 	defer exp.StopRefresh()
 

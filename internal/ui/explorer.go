@@ -53,6 +53,11 @@ type Explorer struct {
 	// for actions like yank.
 	displayedRules []*model.Rule
 
+	// columnsIdx selects which preset from columnPresets() the rules
+	// table renders. Cycle with `c` at runtime; initial value comes
+	// from --columns at startup.
+	columnsIdx int
+
 	// Phase 3 write-path state.
 	writeMode bool
 	staged    staged.ChangeList
@@ -136,6 +141,7 @@ type Explorer struct {
 // writeMode toggles the Phase 3 edit affordances (a / e / d keys, the
 // rule editor page, the diff/commit screen). False means read-only.
 // committer must be non-nil iff writeMode is true.
+// columnsIdx is the initial rule-list column preset; cycle at runtime with c.
 func NewExplorer(
 	app *tview.Application,
 	rs *model.Ruleset,
@@ -143,15 +149,17 @@ func NewExplorer(
 	interval time.Duration,
 	writeMode bool,
 	committer *nft.Committer,
+	columnsIdx int,
 ) *Explorer {
 	e := &Explorer{
-		app:       app,
-		rs:        rs,
-		host:      hostname(),
-		fetch:     fetch,
-		interval:  interval,
-		writeMode: writeMode,
-		committer: committer,
+		app:        app,
+		rs:         rs,
+		host:       hostname(),
+		fetch:      fetch,
+		interval:   interval,
+		writeMode:  writeMode,
+		committer:  committer,
+		columnsIdx: columnsIdx,
 	}
 	e.indexRules()
 	e.build()
@@ -611,6 +619,9 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 	case 'm':
 		e.openMonitor()
 		return nil
+	case 'c':
+		e.cycleColumns()
+		return nil
 	case '?':
 		if name, _ := e.pages.GetFrontPage(); name == "help" {
 			e.pages.HidePage("help")
@@ -638,6 +649,27 @@ func (e *Explorer) yankSelectedRule() {
 	e.setStatus(fmt.Sprintf(
 		"yanked rule #%d (%d bytes) — paste into your editor / config repo",
 		r.Handle, len(r.NFT)))
+}
+
+// activeColumnSet returns the current column layout. Clamps the
+// stored index so a stale --columns choice still renders cleanly.
+func (e *Explorer) activeColumnSet() *columnSet {
+	presets := columnPresets()
+	if e.columnsIdx < 0 || e.columnsIdx >= len(presets) {
+		e.columnsIdx = 0
+	}
+	return presets[e.columnsIdx]
+}
+
+// cycleColumns advances to the next preset and re-renders the currently
+// shown chain (if any) so the change is immediate.
+func (e *Explorer) cycleColumns() {
+	e.columnsIdx = (e.columnsIdx + 1) % len(columnPresets())
+	e.rules.Clear()
+	if e.currentChain != nil {
+		e.showChain(e.currentChain)
+	}
+	e.setStatus(fmt.Sprintf("columns: %s", e.activeColumnSet().name))
 }
 
 // selectedRule returns the rule corresponding to the rules table's
@@ -723,9 +755,9 @@ func (e *Explorer) showChain(c *model.Chain) {
 	}
 	e.rules.SetTitle(title)
 
-	headers := []string{"H#", "PKTS", "BYTES", "IIF", "OIF", "SRC", "DST", "DPORT", "VERDICT", "RULE"}
-	for col, h := range headers {
-		e.rules.SetCell(0, col, headerCell(h))
+	cols := e.activeColumnSet()
+	for col, spec := range cols.columns {
+		e.rules.SetCell(0, col, headerCell(spec.header))
 	}
 
 	e.displayedRules = e.displayedRules[:0]
@@ -737,16 +769,9 @@ func (e *Explorer) showChain(c *model.Chain) {
 		}
 		matched++
 		e.displayedRules = append(e.displayedRules, r)
-		e.rules.SetCell(displayRow, 0, dataCell(fmt.Sprintf("%d", r.Handle)))
-		e.rules.SetCell(displayRow, 1, dataCell(humanCount(r.Counter.Packets)))
-		e.rules.SetCell(displayRow, 2, dataCell(humanBytes(r.Counter.Bytes)))
-		e.rules.SetCell(displayRow, 3, dataCell(blankDash(r.IIfName)))
-		e.rules.SetCell(displayRow, 4, dataCell(blankDash(r.OIfName)))
-		e.rules.SetCell(displayRow, 5, dataCell(blankDash(r.SAddr)))
-		e.rules.SetCell(displayRow, 6, dataCell(blankDash(r.DAddr)))
-		e.rules.SetCell(displayRow, 7, dataCell(blankDash(r.DPort)))
-		e.rules.SetCell(displayRow, 8, dataCell(blankDash(r.Verdict)))
-		e.rules.SetCell(displayRow, 9, dataCell(truncate(r.NFT, 80)))
+		for col, spec := range cols.columns {
+			e.rules.SetCell(displayRow, col, dataCell(spec.value(r)))
+		}
 		displayRow++
 	}
 	switch {
