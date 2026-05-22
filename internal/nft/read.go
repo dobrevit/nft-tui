@@ -143,6 +143,7 @@ func (c *Conn) readSet(s *nftables.Set, t *model.Table) (*model.Set, error) {
 		Table:   t,
 		Name:    s.Name,
 		KeyType: s.KeyType.Name,
+		IsMap:   s.IsMap,
 		Flags: model.SetFlags{
 			Constant: s.Constant,
 			Dynamic:  s.Dynamic,
@@ -152,6 +153,10 @@ func (c *Conn) readSet(s *nftables.Set, t *model.Table) (*model.Set, error) {
 		},
 		Timeout: s.Timeout,
 	}
+	if s.IsMap {
+		ms.DataType = s.DataType.Name
+		ms.ValueIsVerdict = s.DataType.Name == "verdict"
+	}
 	els, err := c.c.GetSetElements(s)
 	if err != nil {
 		// A set may legitimately have no elements; only surface real errors.
@@ -160,7 +165,7 @@ func (c *Conn) readSet(s *nftables.Set, t *model.Table) (*model.Set, error) {
 	}
 	ms.Elements = make([]model.SetElement, 0, len(els))
 	for _, e := range els {
-		ms.Elements = append(ms.Elements, convertSetElement(s.KeyType.Name, e))
+		ms.Elements = append(ms.Elements, convertSetElement(ms, e))
 	}
 	ms.Size = len(ms.Elements)
 	return ms, nil

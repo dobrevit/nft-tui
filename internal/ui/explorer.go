@@ -317,16 +317,36 @@ func (e *Explorer) buildTableNode(t *model.Table) *tview.TreeNode {
 		e.nodeByChain[c] = cnode
 		tnode.AddChild(cnode)
 	}
-	if len(t.Sets) > 0 {
-		sgroup := tview.NewTreeNode(fmt.Sprintf("sets (%d)", len(t.Sets))).
+	// Split into sets (key only) and maps (key→value) for clearer grouping.
+	var plainSets, maps []*model.Set
+	for _, s := range t.Sets {
+		if s.IsMap {
+			maps = append(maps, s)
+		} else {
+			plainSets = append(plainSets, s)
+		}
+	}
+	if len(plainSets) > 0 {
+		group := tview.NewTreeNode(fmt.Sprintf("sets (%d)", len(plainSets))).
 			SetSelectable(false).
 			SetColor(tcell.ColorGray)
-		for _, s := range t.Sets {
-			sgroup.AddChild(tview.NewTreeNode(
+		for _, s := range plainSets {
+			group.AddChild(tview.NewTreeNode(
 				fmt.Sprintf("%s : %s", s.Name, s.KeyType),
 			).SetReference(s).SetSelectable(true))
 		}
-		tnode.AddChild(sgroup)
+		tnode.AddChild(group)
+	}
+	if len(maps) > 0 {
+		group := tview.NewTreeNode(fmt.Sprintf("maps (%d)", len(maps))).
+			SetSelectable(false).
+			SetColor(tcell.ColorGray)
+		for _, s := range maps {
+			group.AddChild(tview.NewTreeNode(
+				fmt.Sprintf("%s : %s → %s", s.Name, s.KeyType, s.DataType),
+			).SetReference(s).SetSelectable(true))
+		}
+		tnode.AddChild(group)
 	}
 	return tnode
 }
@@ -515,8 +535,15 @@ func (e *Explorer) showTable(t *model.Table) {
 func (e *Explorer) showSet(s *model.Set) {
 	e.detail.SwitchToPage("info")
 	var b strings.Builder
-	fmt.Fprintf(&b, "[::b]set %s %s %s[::-]\n\n", s.Table.Family, s.Table.Name, s.Name)
+	kind := "set"
+	if s.IsMap {
+		kind = "map"
+	}
+	fmt.Fprintf(&b, "[::b]%s %s %s %s[::-]\n\n", kind, s.Table.Family, s.Table.Name, s.Name)
 	fmt.Fprintf(&b, "key type:  %s\n", s.KeyType)
+	if s.IsMap {
+		fmt.Fprintf(&b, "data type: %s\n", s.DataType)
+	}
 	fmt.Fprintf(&b, "constant:  %v\n", s.Flags.Constant)
 	fmt.Fprintf(&b, "dynamic:   %v\n", s.Flags.Dynamic)
 	fmt.Fprintf(&b, "interval:  %v\n", s.Flags.Interval)
@@ -526,38 +553,54 @@ func (e *Explorer) showSet(s *model.Set) {
 	}
 	fmt.Fprintf(&b, "elements:  %d\n\n", len(s.Elements))
 
-	// Pair up interval-end sentinels for display.
-	var pending string
 	count := 0
-	for _, el := range s.Elements {
-		if el.IntervalEnd {
-			if pending != "" {
-				writeSetElement(&b, pending+"-"+el.Key, 0, "")
-				pending = ""
+	emit := func(text string, timeoutLeft time.Duration, comment string) {
+		writeSetElement(&b, text, timeoutLeft, comment)
+		count++
+	}
+
+	if s.IsMap {
+		for _, el := range s.Elements {
+			if el.IntervalEnd {
+				continue
 			}
-			continue
-		}
-		if pending != "" {
-			writeSetElement(&b, pending, 0, "")
-			count++
+			val := el.Value
+			if val == "" {
+				val = "[gray]<missing-value>[-]"
+			}
+			emit(fmt.Sprintf("%s  →  %s", el.Key, val), el.TimeoutLeft, el.Comment)
 			if count >= 200 {
 				fmt.Fprintf(&b, "  [gray]… %d more elided[-]\n", len(s.Elements)-count)
+				e.info.SetText(b.String())
 				return
 			}
 		}
-		pending = el.Key
-		// Carry timeout/comment forward to the actual emit, in case the
-		// next element is a sentinel.
-		writeSetElement(&b, el.Key, el.TimeoutLeft, el.Comment)
-		pending = ""
-		count++
-		if count >= 200 {
-			fmt.Fprintf(&b, "  [gray]… %d more elided[-]\n", len(s.Elements)-count)
-			return
+	} else {
+		// Pair up interval-end sentinels for display.
+		var pending string
+		for _, el := range s.Elements {
+			if el.IntervalEnd {
+				if pending != "" {
+					emit(pending+"-"+el.Key, 0, "")
+					pending = ""
+				}
+				continue
+			}
+			if pending != "" {
+				emit(pending, 0, "")
+			}
+			pending = el.Key
+			emit(el.Key, el.TimeoutLeft, el.Comment)
+			pending = ""
+			if count >= 200 {
+				fmt.Fprintf(&b, "  [gray]… %d more elided[-]\n", len(s.Elements)-count)
+				e.info.SetText(b.String())
+				return
+			}
 		}
-	}
-	if pending != "" {
-		writeSetElement(&b, pending, 0, "")
+		if pending != "" {
+			emit(pending, 0, "")
+		}
 	}
 	e.info.SetText(b.String())
 }

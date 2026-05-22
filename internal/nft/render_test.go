@@ -182,6 +182,44 @@ func TestRenderRule(t *testing.T) {
 			},
 			want: `jump LOG_AND_DROP`,
 		},
+		{
+			name: "verdict map lookup (anonymous, inlined)",
+			exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+				&expr.Lookup{
+					SourceRegister: 1, DestRegister: 0,
+					SetName: "__map0",
+				},
+			},
+			sets: map[string]*model.Set{
+				"__map0": {
+					Name: "__map0", KeyType: "ifname",
+					IsMap: true, DataType: "verdict", ValueIsVerdict: true,
+					Elements: []model.SetElement{
+						{Key: `"eth0"`, Value: "jump LAN"},
+						{Key: `"eth1"`, Value: "jump WAN"},
+					},
+				},
+			},
+			want: `iifname vmap { "eth0" : jump LAN, "eth1" : jump WAN }`,
+		},
+		{
+			name: "data map lookup (named)",
+			exprs: []expr.Any{
+				&expr.Payload{
+					DestRegister: 1, Base: expr.PayloadBaseNetworkHeader,
+					Offset: 12, Len: 4,
+				},
+				&expr.Lookup{SourceRegister: 1, DestRegister: 8, SetName: "addr_to_mark"},
+			},
+			sets: map[string]*model.Set{
+				"addr_to_mark": {
+					Name: "addr_to_mark", KeyType: "ipv4_addr",
+					IsMap: true, DataType: "mark",
+				},
+			},
+			want: `ip saddr map @addr_to_mark`,
+		},
 	}
 
 	for _, tc := range cases {

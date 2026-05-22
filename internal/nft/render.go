@@ -211,19 +211,37 @@ func RenderRule(r *nftables.Rule, sets map[string]*model.Set) RuleRendering {
 				}
 			}
 
+			// op selects the nft keyword between LHS and the set/map ref.
+			// Empty for a plain set membership test (`<lhs> @set`);
+			// "vmap" for verdict maps; "map" for data maps.
+			op := ""
 			setRef := "@" + x.SetName
-			if isAnonymousSet(x.SetName) {
-				if s, found := sets[x.SetName]; found {
-					elems := renderSetElements(s)
-					if len(elems) > 0 {
+			if s, found := sets[x.SetName]; found {
+				switch {
+				case s.IsMap && s.ValueIsVerdict:
+					op = "vmap"
+				case s.IsMap:
+					op = "map"
+				}
+				if isAnonymousSet(x.SetName) {
+					if elems := renderSetElements(s); len(elems) > 0 {
 						setRef = "{ " + strings.Join(elems, ", ") + " }"
 					}
 				}
 			}
 
-			if x.Invert {
+			switch {
+			case x.Invert:
 				emitMatch(fmt.Sprintf("%s != %s", label, setRef))
-			} else {
+			case op != "":
+				emitMatch(fmt.Sprintf("%s %s %s", label, op, setRef))
+				if op == "vmap" {
+					// The map's value supplies the rule's verdict; surface
+					// that in the decoded Verdict field for the columnar
+					// view, lacking a more specific signal.
+					out.Verdict = "vmap " + x.SetName
+				}
+			default:
 				emitMatch(fmt.Sprintf("%s %s", label, setRef))
 			}
 

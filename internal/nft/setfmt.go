@@ -49,9 +49,13 @@ func formatSetElement(keyType string, key []byte) string {
 }
 
 // renderSetElements returns the elements of a set as a slice of
-// already-formatted strings. IntervalEnd sentinels (the upper bound of
-// interval sets) are paired with the previous element as "low-high".
+// already-formatted strings. For plain sets IntervalEnd sentinels (the
+// upper bound of interval sets) are paired with the previous element as
+// "low-high". For maps each element is rendered as "key : value".
 func renderSetElements(s *model.Set) []string {
+	if s.IsMap {
+		return renderMapElements(s)
+	}
 	out := make([]string, 0, len(s.Elements))
 	var pending string
 	for _, el := range s.Elements {
@@ -75,12 +79,42 @@ func renderSetElements(s *model.Set) []string {
 	return out
 }
 
-// convertSetElement turns a netlink-decoded SetElement into our model.
-func convertSetElement(keyType string, e nftables.SetElement) model.SetElement {
-	return model.SetElement{
-		Key:          formatSetElement(keyType, e.Key),
-		IntervalEnd:  e.IntervalEnd,
-		Comment:      e.Comment,
-		TimeoutLeft:  e.Expires,
+// renderMapElements emits "key : value" pairs for map elements. Interval
+// sentinels in maps are rare (interval-keyed maps); we drop them on the
+// Phase 2 floor for now and surface a TODO marker so the operator knows.
+func renderMapElements(s *model.Set) []string {
+	out := make([]string, 0, len(s.Elements))
+	for _, el := range s.Elements {
+		if el.IntervalEnd {
+			continue
+		}
+		if el.Value == "" {
+			out = append(out, el.Key+" : <missing-value>")
+		} else {
+			out = append(out, el.Key+" : "+el.Value)
+		}
 	}
+	return out
+}
+
+// convertSetElement turns a netlink-decoded SetElement into our model. The
+// containing Set's metadata (IsMap / DataType / ValueIsVerdict) is needed
+// to render the value side of map elements.
+func convertSetElement(s *model.Set, e nftables.SetElement) model.SetElement {
+	me := model.SetElement{
+		Key:         formatSetElement(s.KeyType, e.Key),
+		IntervalEnd: e.IntervalEnd,
+		Comment:     e.Comment,
+		TimeoutLeft: e.Expires,
+	}
+	if !s.IsMap {
+		return me
+	}
+	switch {
+	case s.ValueIsVerdict && e.VerdictData != nil:
+		me.Value = renderVerdict(e.VerdictData)
+	case len(e.Val) > 0:
+		me.Value = formatSetElement(s.DataType, e.Val)
+	}
+	return me
 }

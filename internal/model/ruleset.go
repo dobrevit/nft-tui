@@ -111,9 +111,19 @@ type Counter struct {
 }
 
 type Set struct {
-	Table    *Table `json:"-"`
-	Name     string
-	KeyType  string
+	Table   *Table `json:"-"`
+	Name    string
+	KeyType string
+
+	// IsMap distinguishes a map (key→value) from a plain set (key only).
+	IsMap bool
+	// DataType is the nft type name of the value side of a map (e.g.
+	// "verdict", "mark", "ipv4_addr"). Empty for plain sets.
+	DataType string
+	// ValueIsVerdict is a convenience flag: true when DataType=="verdict".
+	// Such maps are consulted with `<lhs> vmap …`; other maps use `map`.
+	ValueIsVerdict bool
+
 	Flags    SetFlags
 	Timeout  time.Duration
 	Elements []SetElement
@@ -131,6 +141,10 @@ type SetFlags struct {
 
 type SetElement struct {
 	Key string
+	// Value is the rendered value side for map elements. Empty for plain
+	// sets. For verdict maps this is "accept", "drop", "jump LAN", ...;
+	// for data maps it's the formatted value (e.g. "0x42", "10.0.0.1").
+	Value string
 	// IntervalEnd is true when this element is the sentinel upper bound of
 	// an interval-set entry (the lower bound is the previous element).
 	IntervalEnd bool

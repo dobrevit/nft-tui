@@ -80,7 +80,13 @@ func dump(rs *model.Ruleset) {
 			}
 		}
 		for _, s := range t.Sets {
-			fmt.Printf("  set %s { type %s; }\n", s.Name, s.KeyType)
+			if s.IsMap {
+				fmt.Printf("  map %s { type %s : %s; %d elements }\n",
+					s.Name, s.KeyType, s.DataType, len(s.Elements))
+			} else {
+				fmt.Printf("  set %s { type %s; %d elements }\n",
+					s.Name, s.KeyType, len(s.Elements))
+			}
 		}
 	}
 }
