@@ -1,24 +1,25 @@
 # Keybindings
 
 vim-style by default, with function-key shortcuts for actions that take a
-hand off the home row. Discoverable via `?` from any screen.
+hand off the home row. Discoverable via `?` from any screen, and documented
+in `man nft-tui`.
 
 ## Global
 
 | Key       | Action                                       |
 |-----------|----------------------------------------------|
 | `?`       | Help overlay (toggle)                        |
-| `q`       | Quit (warns if there are staged changes)     |
-| `Ctrl-C`  | Hard quit (discards staged changes)          |
-| `Tab`     | Cycle pane focus                             |
+| `q`       | Quit                                         |
+| `Ctrl-C`  | Hard quit                                    |
+| `Tab`     | Cycle pane focus (tree ↔ rules)              |
 | `Esc`     | Back / close modal                           |
-| `:`       | Global command line                          |
-| `/`       | Filter current view                          |
-| `Ctrl-G`  | Regex search across whole ruleset            |
-| `r`       | Toggle read-only / read-write mode           |
-| `m`       | Live monitor screen                          |
-| `F1`      | Help                                         |
-| `F12`     | Cycle colour theme                           |
+| `:`       | Global search OR `:w <path>` / `:r <path>`   |
+| `/`       | Filter current rule list                     |
+| `y`       | Yank selected rule's nft syntax (OSC 52)     |
+| `R`       | Full reload                                  |
+| `m`       | Live monitor                                 |
+| `D`       | Diff / commit page                           |
+| `c`       | Cycle rule-list column preset                |
 
 ## Tree (left pane)
 
@@ -27,65 +28,84 @@ hand off the home row. Discoverable via `?` from any screen.
 | `j` / `↓`       | Move down                           |
 | `k` / `↑`       | Move up                             |
 | `h` / `←`       | Collapse node / move to parent      |
-| `l` / `→`       | Expand node / enter right pane      |
+| `l` / `→`       | Expand node                         |
 | `Enter`         | Open node in right pane             |
 | `g` / `G`       | Top / bottom                        |
-| `Ctrl-D` / `-U` | Half-page down / up                 |
 
-## Rule list (right pane)
-
-| Key       | Action                                              |
-|-----------|-----------------------------------------------------|
-| `j`/`k`   | Move row                                            |
-| `Enter`   | Expand inspector for selected rule                  |
-| `e`       | Edit rule (form)                                    |
-| `a`       | Add rule before / after (asks which)                |
-| `d`       | Delete rule (asks confirm)                          |
-| `y`       | Yank canonical `nft` syntax to clipboard / OSC 52   |
-| `s`       | Cycle sort column (handle / pkts / bytes)           |
-| `S`       | Reverse sort                                        |
-| `r`       | Reset counters on selected rule                     |
-
-## Editor (modal)
+## Rule list (right pane, requires `--write` for edits)
 
 | Key       | Action                                              |
 |-----------|-----------------------------------------------------|
-| `Tab`     | Next field                                          |
-| `Shift-Tab` | Previous field                                    |
-| `F5`      | Stage change                                        |
-| `F6`      | Stage and open diff/commit                          |
-| `F8`      | Toggle raw `nft`-syntax editor                      |
-| `Esc`     | Cancel (asks if there are unsaved fields)           |
+| `j` / `k` | Move row                                            |
+| `a`       | Add (append) rule to the current chain              |
+| `o` / `O` | Insert AFTER / BEFORE the selected rule             |
+| `e`       | Edit (replace) the selected rule                    |
+| `d`       | Stage a delete of the selected rule                 |
+| `y`       | Yank canonical `nft` syntax via OSC 52              |
 
-## Diff / commit
+## Editor page
+
+| Key         | Action                                            |
+|-------------|---------------------------------------------------|
+| `Tab`       | Next field (between body, comment, form fields)   |
+| `F5`        | Stage and close                                   |
+| `F6`        | Stage and open the diff page                      |
+| `F8`        | Toggle between form view and raw-nft TextArea     |
+| `Esc`       | Cancel                                            |
+
+## Diff / commit page
 
 | Key       | Action                                              |
 |-----------|-----------------------------------------------------|
-| `j`/`k`   | Move within diff                                    |
+| `j` / `k` | Move within the summary                             |
 | `u`       | Unstage last change                                 |
 | `U`       | Unstage all                                         |
-| `F2`      | Commit (after a successful dry-run)                 |
-| `F3`      | Re-run dry-run                                      |
-| `F4`      | Open staged file in `$EDITOR`                       |
+| `F3`      | Dry-run via `nft -c -f`                             |
+| `F2`      | Commit via `nft -f` (opens Apply/Cancel modal,      |
+|           | enabled only after a passing F3)                    |
+| `Esc`     | Back to the explorer                                |
 
 ## Live monitor
 
-| Key       | Action                          |
-|-----------|---------------------------------|
-| `p`       | Pause / resume                  |
-| `+` / `-` | Increase / decrease interval    |
-| `s`       | Cycle sort (pps / bps / Δpkts)  |
-| `f`       | Filter to one chain             |
+| Key       | Action                                |
+|-----------|---------------------------------------|
+| `s`       | Cycle sort metric (pps / bps / Δpkts) |
+| `p`       | Pause / resume                        |
+| `j` / `k` | Move row (updates the sparkline)      |
+| `Esc`     | Back to the explorer                  |
+
+## Dead-man's switch (restore confirmation)
+
+| Key   | Action                                         |
+|-------|------------------------------------------------|
+| `Y`   | Apply / keep new ruleset                       |
+| `Esc` | Cancel / roll back to pre-restore state        |
+| —     | 60-second timeout auto-rolls-back              |
 
 ## Command line (`:` prefix)
 
 | Command             | Action                                              |
 |---------------------|-----------------------------------------------------|
-| `:w <path>`         | Write ruleset snapshot to path                      |
-| `:r <path>`         | Restore ruleset from snapshot (dangerous, confirms) |
-| `:e <path>`         | Open external `nft` file in editor                  |
-| `:commit`           | Same as F2                                          |
-| `:flush <table>`    | Flush a table (stages, doesn't apply directly)      |
-| `:reload`           | Re-read kernel ruleset, discard cache               |
-| `:set monitor on`   | Enable netlink monitoring (if available)            |
-| `:q` / `:q!`        | Quit / force quit                                   |
+| `:w <path>`         | Snapshot the live ruleset to `<path>`               |
+| `:write <path>`     | (long form)                                         |
+| `:r <path>`         | Restore from snapshot (60-second dead-man's switch) |
+| `:read <path>`      | (long form)                                         |
+| `:restore <path>`   | (long form)                                         |
+| Anything else       | Treated as a global-search query                    |
+
+Paths starting with `~/` are expanded against `$HOME`.
+
+## Commands not yet implemented
+
+These were listed in the original Phase 1 keymap but didn't ship in v1.0
+(left out because the existing affordances cover the use case):
+
+- `Ctrl-G` regex search — `/` already does case-insensitive substring,
+  which has been enough for our test rulesets
+- `F1` help — `?` does the job
+- `F12` theme cycle — themes are picked at startup via `--theme`
+- `:e <path>` external-editor pivot
+- `:commit`, `:flush <table>`, `:reload`, `:set monitor on`
+- Live-monitor: `+`/`-` interval, `f` chain filter
+
+If you need any of these, open an issue.

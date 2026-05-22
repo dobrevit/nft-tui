@@ -1,106 +1,124 @@
 # Deferred work
 
-Things consciously deferred during Phase 1-3 development, kept here so we
-can revisit before declaring v1.0. Each entry says why it was skipped and
-roughly what shape the fix would take.
+> All items below are resolved for the v1.0 ship — see the ✅ markers
+> against each. The page is kept as a record of design decisions and
+> as a place to track any new "we'll get to it later" items.
 
-## Phase 3 deferrals
+## Phase 3 deferrals (closed)
 
-### Form-based rule editor
+### Form-based rule editor — ✅ shipped
 
-Phase 3.1 ships raw mode only — a TextArea where the user types nft
-syntax directly. The screen mock in [03-screens.md](03-screens.md) shows
-a structured form (Interface in / out, Source, Destination, Protocol,
-Sport / Dport, ct state, …) with a live nft preview underneath.
+Phase 3 raw-mode editor is augmented by a structured `tview.Form` in
+`internal/ui/editor_form.go`. The form covers the common-case fields
+(iifname / oifname / saddr / daddr / proto+sport+dport / ct state /
+counter / log+prefix / verdict / comment) and live-updates the same
+TextArea the raw view edits — single source of truth for stage and
+preview. **F8** toggles between form and raw views; modeAdd /
+modeInsert default to form, modeEdit defaults to raw (no nft parser
+yet, so structured round-trip would be lossy).
 
-**Why deferred.** The form needs (a) parsing existing rules into
-structured fields for edit mode, (b) round-tripping unknown clauses
-without losing them, (c) UI plumbing for ~20 fields. Raw mode covers
-100% of nftables features today; the form is convenience.
+Open follow-up: parsing existing rules into the form on modeEdit
+without losing unrecognised clauses. Would need a small nft parser
+or a "trailing-nft" passthrough field.
 
-**Shape.** Add an `editorFormPage` alongside `editor` page; F8 toggles
-between them. In modeEdit, populate fields from the parsed rule and
-keep any unrecognised clauses in a "trailing nft" textbox that round-
-trips verbatim.
+### Explicit confirmation modal before F2 commit — ✅ shipped
 
-### Explicit confirmation modal before F2 commit
+F2 now opens a `tview.Modal` with the change count and Apply / Cancel
+buttons. The dry-run gate is still required first.
 
-Currently F2 commits if F3 (dry-run) passed. There is no second
-"are you sure?" prompt.
+### Insert-before / insert-after handle — ✅ shipped
 
-**Why deferred.** The dry-run is itself the safety gate. An extra
-modal felt like noise during testing. But for restore (Phase 5) we
-absolutely need a confirmation, so the pattern will exist; once it
-does, gating F2 behind it is a one-liner if you want it.
+`o` (insert AFTER the selected rule, → `add rule … position H`) and
+`O` (insert BEFORE, → `insert rule … position H`). `staged.InsertRule`
+gained an `After bool` so both nft verbs round-trip.
 
-### Insert-before / insert-after handle in the explorer
+## Earlier deferrals (closed)
 
-`staged.InsertRule` exists in the model and renders correctly
-(`insert rule … position H`). The explorer only exposes `a` (append)
-and `e` (replace) — no key for "add a rule before / after this one".
+### Tree rebuild on kernel drift — ✅ shipped
 
-**Why deferred.** No good muscle-memory key was obvious. Vim users
-would expect `o` / `O`; `mc` users would expect a function key. Wait
-until a real workflow demands it.
+`applyRuleset` now auto-rebuilds the tree on structural diffs (paired
+with Phase 4.3 monitor events that fire on external mutations within
+250 ms). `rebuildPreservingSelection` preserves the user's
+currently-viewed chain across the rebuild by `(family, table, name)`
+tuple; if the chain was deleted externally, the right pane swaps to
+an explanatory info view so the user isn't silently relocated.
 
-**Shape.** Add `o` (insert after selected) and `O` (insert before).
-Both open the editor in modeAdd but stage an `InsertRule` with the
-selected rule's handle as `Position`.
+### Interval-keyed maps — ✅ shipped
 
-## Phase 4 — live monitor
+`renderMapElements` pairs `IntervalEnd` sentinels with the preceding
+start element to produce `low-high : value`. Tested for plain maps,
+interval maps, missing values, and pathological orphan inputs.
 
-Started after Phase 3 lands. See git history.
-
-## Earlier deferrals still open
-
-### Tree rebuild on kernel drift
-
-Phase 2.2 detects structural changes from the kernel (new/removed
-tables/chains/rules outside our staged ops) and sets `kernelDrift`,
-but only forces a manual `R` reload. Could auto-rebuild after a
-debounce; tradeoff is losing tree expansion / selection.
-
-### Interval-keyed maps
-
-`internal/nft/setfmt.go renderMapElements` drops `IntervalEnd`
-sentinels. Sets with interval keys are common (port ranges); maps
-with interval keys are rare. Rendering as `low-high : value` pairs
-is the right shape; do it once we see one in the wild.
-
-### Mouse support polish
+### Mouse support polish — ✅ audited, defaults documented
 
 Audited. `EnableMouse(true)` is on; tview's primitive defaults cover
-the primary interactions (click trees / table rows / list items /
-modal buttons, scroll wheel on text views and tables). Modal-overlay
-leakage scenarios — clicks on the padding around a centred overlay
-falling through to the underlying main page — were NOT exercised
-because reproducing them needs an interactive terminal. Re-open if a
-user reports a specific click going to the wrong widget; the fix is
-likely a `Box`-with-mouse-capture wrapper around each centred
-overlay.
+click-to-select on trees / table rows / list items / modal buttons,
+and scroll-wheel on text views and tables. Help overlay documents
+the primary mouse interactions.
 
-The help overlay now documents the primary mouse interactions.
+Open follow-up if it ever bites: modal-overlay leakage scenarios —
+clicks on the padding around a centred overlay falling through to the
+underlying main page — weren't exercised because reproducing them
+needs an interactive terminal. Fix would be a `Box`-with-mouse-capture
+wrapper around each centred overlay.
 
-## Code-quality items
+## Code-quality items (closed)
 
-These are SonarLint warnings ignored during development; none are
-correctness issues.
+### S1192 string-literal duplication — ✅ fixed
 
-- **S3776 cognitive complexity** on:
-  - `internal/nft/render.go` `RenderRule` (~90)
-  - `internal/ui/explorer.go` `applyRuleset` (~17), `showSet` (~33)
-  - `internal/ui/diff.go` `renderDiffSummary` (~16)
-  - `internal/ui/editor.go` `editorInputCapture` (~10)
-  - `internal/ui/search.go` `refreshSearchResults` (~17)
+11 kind discriminators (`kindMetaIIFName`, `kindCTState`, `kindIPSAddr`,
+…) are now package-private constants in `internal/nft/render.go`. Any
+future kind-comparison typo is a compile error instead of a silent
+fall-through.
 
-  The hot one is `RenderRule` — the big expr type-switch. Splitting
-  each case into a small renderXxx helper is a mechanical refactor.
+### S3776 cognitive complexity on RenderRule — ✅ refactored
 
-- **S1192 string literal duplication** — kind constants (`"meta-l4proto"`,
-  `"ip-saddr"`, etc.) in `render.go`. Fix is straightforward: define a
-  set of `const kindXxx = "…"` strings at the top of the file.
+`RenderRule` is now a 12-line dispatch loop over a `ruleRenderer`
+struct; each expression type has its own small `handle*` method and
+the Cmp case is further split into `cmpCTStateMask` / `cmpL4Proto` /
+`cmpNFProto` / `cmpGeneric`. The biggest function the renderer ships
+is `handleExpr` (the type switch itself), which is just dispatch.
 
-## Not-on-roadmap
+### S3776 on the remaining functions — ⚪ open polish
+
+Lower-priority complexity warnings remain on:
+
+- `internal/ui/explorer.go` `applyRuleset`, `showSet`, `handleKey`,
+  `rebuildPreservingSelection`
+- `internal/ui/diff.go` `renderDiffSummary`
+- `internal/ui/editor.go` `editorInputCapture`
+- `internal/ui/search.go` `refreshSearchResults`
+- `internal/nft/commit_integration_test.go` integration test setup
+- `cmd/nft-tui/main.go` `main`
+
+None affect correctness; the linter flags ≥16. The patterns are all
+sequential setup-then-dispatch — splitting buys readability and not
+much else. Tackle when a function actually becomes hard to read.
+
+## Open v1.1+ ideas
+
+These aren't blockers for v1.0 — they're things that would be nice to
+add if we ever get user feedback asking for them.
+
+### nft text → form fields parser
+
+Lets modeEdit open the form prefilled from an existing rule.
+Trailing-nft passthrough field for unrecognised clauses.
+
+### Theme-driven dynamic-colour tags
+
+Phase 6.0's `Theme` struct exposes semantic colours (Accent / Good /
+Bad / Warning / Muted / Header) but the codebase still embeds raw
+`[green]`/`[yellow]`/`[red]` tags. Plumbing the semantic colours
+through a render helper would let high-contrast / mono themes actually
+remap accents instead of relying only on tview.Styles changes.
+
+### Per-host config file
+
+`~/.config/nft-tui/config.toml` for defaults: theme, columns,
+refresh interval, audit dir override. CLI flags still override.
+
+## Not-on-roadmap (won't fix)
 
 These are out-of-scope per [01-product-brief.md](01-product-brief.md)
 and stay that way:
@@ -108,4 +126,4 @@ and stay that way:
 - Multi-host fanout (use Ansible).
 - Long-running daemon exporting metrics.
 - Wizards for novices.
-- Iptables-nft / legacy compatibility.
+- iptables-nft / legacy compatibility.
