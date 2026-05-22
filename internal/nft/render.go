@@ -48,11 +48,28 @@ type RuleRendering struct {
 	HasCounter     bool
 }
 
+// Stable identifiers for the contents of a netlink register, used as
+// the discriminator on regInfo.kind. Keep these in sync with the
+// metaKeyInfo / payloadInfo / ctKeyInfo constructors below.
+const (
+	kindMetaIIFName  = "meta-iifname"
+	kindMetaOIFName  = "meta-oifname"
+	kindMetaL4Proto  = "meta-l4proto"
+	kindMetaNFProto  = "meta-nfproto"
+	kindCTState      = "ct-state"
+	kindIPSAddr      = "ip-saddr"
+	kindIPDAddr      = "ip-daddr"
+	kindIP6SAddr     = "ip6-saddr"
+	kindIP6DAddr     = "ip6-daddr"
+	kindTransportSrc = "transport-sport"
+	kindTransportDst = "transport-dport"
+)
+
 // regInfo describes the meaning of a value currently held in a netlink
 // register. The renderer fills this in on "load" expressions (Meta, Payload,
 // Ct, Bitwise) and consumes it on Cmp/Lookup.
 type regInfo struct {
-	// kind is a short identifier like "meta-iifname", "ip-saddr", "ct-state".
+	// kind is a short identifier like kindMetaIIFName, kindIPSAddr, kindCTState.
 	kind string
 	// label is the nft-text fragment used on the left of a comparison,
 	// e.g. `iifname`, `ip saddr`, `tcp dport`, `ct state`.
@@ -141,7 +158,7 @@ func RenderRule(r *nftables.Rule, sets map[string]*model.Set) RuleRendering {
 			// `ct state <names>` is emitted by the kernel as ct-state load
 			// → bitwise(AND mask) → cmp(neq, 0). The mask encodes the set
 			// of states matched.
-			if info.kind == "ct-state" && info.mask != nil &&
+			if info.kind == kindCTState && info.mask != nil &&
 				x.Op == expr.CmpOpNeq && allZero(x.Data) {
 				names := formatCTState(binary.LittleEndian.Uint32(info.mask))
 				out.CTState = names
@@ -151,14 +168,14 @@ func RenderRule(r *nftables.Rule, sets map[string]*model.Set) RuleRendering {
 
 			// L4 proto cmp sets the transport context for subsequent port
 			// loads; nft elides this entirely in its output.
-			if info.kind == "meta-l4proto" && x.Op == expr.CmpOpEq && len(x.Data) == 1 {
+			if info.kind == kindMetaL4Proto && x.Op == expr.CmpOpEq && len(x.Data) == 1 {
 				transport = l4protoName(x.Data[0])
 				continue
 			}
 
 			// nfproto guard: defer, elide if the next match is matching
 			// ip-family payload.
-			if info.kind == "meta-nfproto" && x.Op == expr.CmpOpEq && len(x.Data) == 1 {
+			if info.kind == kindMetaNFProto && x.Op == expr.CmpOpEq && len(x.Data) == 1 {
 				pendingNFProtoFam = nfprotoName(x.Data[0])
 				pendingNFProto = "meta nfproto " + pendingNFProtoFam
 				continue
@@ -170,19 +187,19 @@ func RenderRule(r *nftables.Rule, sets map[string]*model.Set) RuleRendering {
 
 			// Capture decoded fields for the columnar view.
 			switch info.kind {
-			case "ip-saddr", "ip6-saddr", "ip-daddr", "ip6-daddr":
+			case kindIPSAddr, kindIP6SAddr, kindIPDAddr, kindIP6DAddr:
 				captureAddr(&out, info.kind, rhs)
-			case "meta-iifname":
+			case kindMetaIIFName:
 				out.IIfName = strings.Trim(rhs, `"`)
-			case "meta-oifname":
+			case kindMetaOIFName:
 				out.OIfName = strings.Trim(rhs, `"`)
-			case "ct-state":
+			case kindCTState:
 				out.CTState = rhs
 			}
 
-			if info.kind == "transport-sport" || info.kind == "transport-dport" {
+			if info.kind == kindTransportSrc || info.kind == kindTransportDst {
 				lhs = transportLabel(info.kind, transport)
-				if info.kind == "transport-sport" {
+				if info.kind == kindTransportSrc {
 					out.SPort = rhs
 				} else {
 					out.DPort = rhs
@@ -203,7 +220,7 @@ func RenderRule(r *nftables.Rule, sets map[string]*model.Set) RuleRendering {
 			label := "<reg>"
 			if ok {
 				label = info.label
-				if info.kind == "transport-sport" || info.kind == "transport-dport" {
+				if info.kind == kindTransportSrc || info.kind == kindTransportDst {
 					label = transportLabel(info.kind, transport)
 					if transport != "" {
 						out.Proto = transport
@@ -316,9 +333,9 @@ func RenderRule(r *nftables.Rule, sets map[string]*model.Set) RuleRendering {
 // captureAddr stashes the rendered address into the appropriate decoded field.
 func captureAddr(out *RuleRendering, kind, rhs string) {
 	switch kind {
-	case "ip-saddr", "ip6-saddr":
+	case kindIPSAddr, kindIP6SAddr:
 		out.SAddr = rhs
-	case "ip-daddr", "ip6-daddr":
+	case kindIPDAddr, kindIP6DAddr:
 		out.DAddr = rhs
 	}
 }
@@ -328,9 +345,9 @@ func captureAddr(out *RuleRendering, kind, rhs string) {
 func metaKeyInfo(k expr.MetaKey) regInfo {
 	switch k {
 	case expr.MetaKeyIIFNAME:
-		return regInfo{kind: "meta-iifname", label: "iifname"}
+		return regInfo{kind: kindMetaIIFName, label: "iifname"}
 	case expr.MetaKeyOIFNAME:
-		return regInfo{kind: "meta-oifname", label: "oifname"}
+		return regInfo{kind: kindMetaOIFName, label: "oifname"}
 	case expr.MetaKeyIIF:
 		return regInfo{kind: "meta-iif", label: "iif"}
 	case expr.MetaKeyOIF:
@@ -338,9 +355,9 @@ func metaKeyInfo(k expr.MetaKey) regInfo {
 	case expr.MetaKeyMARK:
 		return regInfo{kind: "meta-mark", label: "meta mark"}
 	case expr.MetaKeyL4PROTO:
-		return regInfo{kind: "meta-l4proto", label: "meta l4proto"}
+		return regInfo{kind: kindMetaL4Proto, label: "meta l4proto"}
 	case expr.MetaKeyNFPROTO:
-		return regInfo{kind: "meta-nfproto", label: "meta nfproto"}
+		return regInfo{kind: kindMetaNFProto, label: "meta nfproto"}
 	case expr.MetaKeyPROTOCOL:
 		return regInfo{kind: "meta-protocol", label: "meta protocol"}
 	case expr.MetaKeyPRIORITY:
@@ -369,13 +386,13 @@ func payloadInfo(base expr.PayloadBase, offset, length uint32) regInfo {
 		// an implicit prefix of (length*8) bits.
 		switch {
 		case offset == 12 && length >= 1 && length <= 4:
-			return regInfo{kind: "ip-saddr", label: "ip saddr", prefixBits: int(length) * 8}
+			return regInfo{kind: kindIPSAddr, label: "ip saddr", prefixBits: int(length) * 8}
 		case offset == 16 && length >= 1 && length <= 4:
-			return regInfo{kind: "ip-daddr", label: "ip daddr", prefixBits: int(length) * 8}
+			return regInfo{kind: kindIPDAddr, label: "ip daddr", prefixBits: int(length) * 8}
 		case offset == 8 && length >= 1 && length <= 16:
-			return regInfo{kind: "ip6-saddr", label: "ip6 saddr", prefixBits: int(length) * 8}
+			return regInfo{kind: kindIP6SAddr, label: "ip6 saddr", prefixBits: int(length) * 8}
 		case offset == 24 && length >= 1 && length <= 16:
-			return regInfo{kind: "ip6-daddr", label: "ip6 daddr", prefixBits: int(length) * 8}
+			return regInfo{kind: kindIP6DAddr, label: "ip6 daddr", prefixBits: int(length) * 8}
 		case offset == 9 && length == 1:
 			return regInfo{kind: "ip-protocol", label: "ip protocol"}
 		case offset == 6 && length == 1:
@@ -386,9 +403,9 @@ func payloadInfo(base expr.PayloadBase, offset, length uint32) regInfo {
 	case expr.PayloadBaseTransportHeader:
 		switch {
 		case offset == 0 && length == 2:
-			return regInfo{kind: "transport-sport", label: "transport-sport"}
+			return regInfo{kind: kindTransportSrc, label: kindTransportSrc}
 		case offset == 2 && length == 2:
-			return regInfo{kind: "transport-dport", label: "transport-dport"}
+			return regInfo{kind: kindTransportDst, label: kindTransportDst}
 		}
 		return regInfo{kind: "payload-transport", label: fmt.Sprintf("@th,%d,%d", offset, length)}
 
@@ -403,7 +420,7 @@ func payloadInfo(base expr.PayloadBase, offset, length uint32) regInfo {
 func ctKeyInfo(k expr.CtKey) regInfo {
 	switch k {
 	case expr.CtKeySTATE:
-		return regInfo{kind: "ct-state", label: "ct state"}
+		return regInfo{kind: kindCTState, label: "ct state"}
 	case expr.CtKeyMARK:
 		return regInfo{kind: "ct-mark", label: "ct mark"}
 	case expr.CtKeySTATUS:
@@ -436,27 +453,27 @@ func cmpOp(op expr.CmpOp) string {
 
 func formatCmpData(info regInfo, data []byte) string {
 	switch info.kind {
-	case "ip-saddr", "ip-daddr":
+	case kindIPSAddr, kindIPDAddr:
 		return formatIPv4Prefix(data, info.mask, info.prefixBits)
-	case "ip6-saddr", "ip6-daddr":
+	case kindIP6SAddr, kindIP6DAddr:
 		return formatIPv6Prefix(data, info.mask, info.prefixBits)
-	case "transport-sport", "transport-dport":
+	case kindTransportSrc, kindTransportDst:
 		if len(data) == 2 {
 			return fmt.Sprintf("%d", binary.BigEndian.Uint16(data))
 		}
-	case "meta-iifname", "meta-oifname":
+	case kindMetaIIFName, kindMetaOIFName:
 		// NUL-padded IFNAMSIZ buffer.
 		s := strings.TrimRight(string(data), "\x00")
 		return `"` + s + `"`
-	case "meta-l4proto", "ip-protocol", "ip6-nexthdr":
+	case kindMetaL4Proto, "ip-protocol", "ip6-nexthdr":
 		if len(data) == 1 {
 			return l4protoName(data[0])
 		}
-	case "meta-nfproto":
+	case kindMetaNFProto:
 		if len(data) == 1 {
 			return nfprotoName(data[0])
 		}
-	case "ct-state":
+	case kindCTState:
 		if len(data) == 4 {
 			return formatCTState(binary.LittleEndian.Uint32(data))
 		}
@@ -522,7 +539,7 @@ func formatIPv6Prefix(data, mask []byte, prefixBits int) string {
 	return ip.String()
 }
 
-// transportLabel turns ("transport-dport", "tcp") into "tcp dport". Falls
+// transportLabel turns (kindTransportDst, "tcp") into "tcp dport". Falls
 // back to a generic "transport dport" when the L4 proto is unknown.
 func transportLabel(kind, proto string) string {
 	field := strings.TrimPrefix(kind, "transport-")
