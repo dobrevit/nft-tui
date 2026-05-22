@@ -1,0 +1,105 @@
+# goreleaser config — runs in CI on tag push.
+#
+#   $ git tag v0.1.0 && git push origin v0.1.0
+#   $ goreleaser release --clean
+#
+# Produces, per release:
+#   - linux/amd64 and linux/arm64 static binaries
+#   - .tar.gz archives with binary + man page + LICENSE + README
+#   - .deb and .rpm packages installing the binary + gzipped man page
+#   - SHA-256 checksum file + signed if GPG is configured
+#
+# Phase 6.2 focuses on shipping a usable single binary; per-distro
+# polish (systemd units, polkit rules, etc.) is intentionally out of
+# scope — nft-tui is interactive, not a daemon.
+
+version: 2
+
+project_name: nft-tui
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: nft-tui
+    main: ./cmd/nft-tui
+    binary: nft-tui
+    env:
+      # google/nftables is pure Go; CGO_ENABLED=0 produces a fully
+      # static binary that runs on any glibc / musl host.
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: tarball
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE*
+      - README*
+      - man/nft-tui.1
+      - docs/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+nfpms:
+  - id: deb-rpm
+    package_name: nft-tui
+    vendor: dobrevit
+    homepage: https://github.com/dobrevit/nft-tui
+    maintainer: nft-tui maintainers <noreply@example.invalid>
+    description: |
+      Terminal UI for inspecting and managing nftables rulesets.
+      Tree-navigable explorer with live counters, /-filter, : global
+      search, htop-style live monitor with per-rule sparklines, and
+      a staged-edits workflow with dry-run, atomic commit, and a
+      dead-man's switch on restore.
+    license: Apache-2.0
+    formats: [deb, rpm]
+    dependencies:
+      - nftables
+    suggests:
+      - libnftables1
+    bindir: /usr/bin
+    contents:
+      - src: man/nft-tui.1
+        dst: /usr/share/man/man1/nft-tui.1
+        file_info:
+          mode: 0644
+      - src: LICENSE
+        dst: /usr/share/doc/nft-tui/LICENSE
+        file_info:
+          mode: 0644
+        type: doc
+      - src: README.md
+        dst: /usr/share/doc/nft-tui/README.md
+        file_info:
+          mode: 0644
+        type: doc
+
+release:
+  draft: true
+  prerelease: auto
+
+snapshot:
+  version_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

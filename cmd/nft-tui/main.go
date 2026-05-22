@@ -1,8 +1,5 @@
-// Command nft-tui is a terminal UI for inspecting and (eventually) editing
-// the Linux nftables ruleset.
-//
-// Phase 2 ships read-only: connect via netlink, enumerate tables / chains /
-// rules / sets, render them in a tview explorer. No edits, no commits.
+// Command nft-tui is a terminal UI for inspecting and managing the
+// Linux nftables ruleset. See man/nft-tui.1 for the full reference.
 package main
 
 import (
@@ -19,6 +16,14 @@ import (
 	"github.com/dobrevit/nft-tui/internal/ui"
 )
 
+// Build-time identity. Populated via -ldflags by goreleaser /
+// Makefile; defaults are useful when built ad-hoc by `go build`.
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
 func main() {
 	var (
 		dumpOnly     = flag.Bool("dump", false, "fetch the ruleset, print a summary to stdout, and exit (no TUI)")
@@ -27,8 +32,14 @@ func main() {
 		auditDir     = flag.String("audit-dir", nft.DefaultAuditDir(), "directory where committed nft scripts are archived")
 		useMonitor   = flag.Bool("monitor", true, "subscribe to kernel netlink events for immediate refresh on external changes")
 		theme        = flag.String("theme", "default", "colour theme: "+ui.ThemeNames())
+		showVersion  = flag.Bool("version", false, "print version information and exit")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("nft-tui %s (commit %s, built %s)\n", version, commit, date)
+		return
+	}
 
 	t, ok := ui.LookupTheme(*theme)
 	if !ok {
