@@ -126,14 +126,31 @@ func (e *Explorer) editorInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 		e.toggleEditorView()
 		return nil
 	case tcell.KeyTab:
-		// Cycle focus among the three editable widgets.
+		// Manual cycle between the two "outer" widgets (raw-mode
+		// TextArea and the comment InputField). When focus is
+		// anywhere ELSE (the form, or one of its individual fields)
+		// fall through to tview's default Tab handling so the
+		// form's own field-cycle runs — without this fallthrough,
+		// Tab inside the form did nothing.
 		switch e.app.GetFocus() {
 		case e.editorBody:
+			// From the raw TextArea, Tab moves to the comment.
+			// (In form view editorBody is hidden but can still
+			// briefly hold focus after F8; bouncing to comment is
+			// still the right next stop.)
 			e.app.SetFocus(e.editorComment)
+			return nil
 		case e.editorComment:
-			e.app.SetFocus(e.editorBody)
+			// From comment, go to whichever editing pane is visible.
+			if e.editorView == viewForm {
+				e.app.SetFocus(e.editorForm)
+			} else {
+				e.app.SetFocus(e.editorBody)
+			}
+			return nil
 		}
-		return nil
+		// Anywhere else (a form field) — let tview cycle.
+		return ev
 	}
 	return ev
 }

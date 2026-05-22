@@ -575,9 +575,16 @@ func (e *Explorer) buildStatus() {
 }
 
 func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
-	// When focus is in an input field, let it consume printable keys.
-	focus := e.app.GetFocus()
-	if focus == e.filterInput || focus == e.searchInput {
+	// When an overlay page is on top (editor, diff, monitor, search,
+	// help, deadman, confirm-commit) let it handle ITS OWN keys —
+	// including Tab for form-field cycling, Esc for close, q for a
+	// quote in a text input, etc. The explorer's global bindings
+	// only apply to the main page. The previous form of this check
+	// enumerated specific input widgets (filterInput / searchInput),
+	// which missed the editor's TextArea and Form fields and caused
+	// Tab inside the form to bounce focus between the tree and rule
+	// table — the bug this guard now fixes.
+	if name, _ := e.pages.GetFrontPage(); name != "main" {
 		return ev
 	}
 
