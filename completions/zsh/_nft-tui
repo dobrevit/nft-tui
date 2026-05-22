@@ -1,0 +1,42 @@
+#compdef nft-tui
+#
+# zsh completion for nft-tui.
+#
+# Install: drop this file at /usr/share/zsh/site-functions/_nft-tui
+# (the .deb / .rpm do that automatically). Manual install:
+#
+#     install -Dm0644 _nft-tui ~/.local/share/zsh/site-functions/_nft-tui
+#     # Then ensure the dir is in $fpath in your .zshrc:
+#     #   fpath=(~/.local/share/zsh/site-functions $fpath)
+#     #   autoload -U compinit && compinit
+#
+# Completes:
+#   - flag names (single or double-dash)
+#   - the value set for -theme and -columns
+#   - file paths for -config (files) and -audit-dir (directories)
+
+_nft_tui() {
+    _arguments -s \
+        '-config[path to TOML config file]:file:_files' \
+        '--config[path to TOML config file]:file:_files' \
+        '-dump[print ruleset summary to stdout and exit]' \
+        '--dump[print ruleset summary to stdout and exit]' \
+        '-refresh[live-counter refresh interval]:duration (e.g. 2s):(250ms 500ms 1s 2s 5s 10s 30s 1m 0s)' \
+        '--refresh[live-counter refresh interval]:duration (e.g. 2s):(250ms 500ms 1s 2s 5s 10s 30s 1m 0s)' \
+        '-write[enable edit/commit affordances]' \
+        '--write[enable edit/commit affordances]' \
+        '-audit-dir[directory for committed nft scripts]:directory:_directories' \
+        '--audit-dir[directory for committed nft scripts]:directory:_directories' \
+        '-monitor[subscribe to kernel netlink events]' \
+        '--monitor[subscribe to kernel netlink events]' \
+        '-theme[colour theme]:theme:(default high-contrast mono)' \
+        '--theme[colour theme]:theme:(default high-contrast mono)' \
+        '-columns[rule-list column preset]:preset:(default minimal debug wide)' \
+        '--columns[rule-list column preset]:preset:(default minimal debug wide)' \
+        '-version[print version and exit]' \
+        '--version[print version and exit]' \
+        '-help[print help and exit]' \
+        '--help[print help and exit]'
+}
+
+_nft_tui "$@"

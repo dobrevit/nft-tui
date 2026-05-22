@@ -1,0 +1,50 @@
+# bash completion for nft-tui.
+#
+# Install: drop this file at /usr/share/bash-completion/completions/nft-tui
+# (the .deb / .rpm do that automatically). Manual install:
+#
+#     install -Dm0644 nft-tui ~/.local/share/bash-completion/completions/nft-tui
+#
+# Completes:
+#   - flag names (single or double-dash; Go's flag package accepts both)
+#   - the value set for -theme and -columns
+#   - file paths for -config and -audit-dir
+
+_nft_tui() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    case "$prev" in
+        -config|--config)
+            # Standard file completion — relative paths and absolute.
+            _filedir
+            return 0
+            ;;
+        -audit-dir|--audit-dir)
+            # Directory completion: -d to compgen restricts results.
+            _filedir -d
+            return 0
+            ;;
+        -theme|--theme)
+            COMPREPLY=( $(compgen -W "default high-contrast mono" -- "$cur") )
+            return 0
+            ;;
+        -columns|--columns)
+            COMPREPLY=( $(compgen -W "default minimal debug wide" -- "$cur") )
+            return 0
+            ;;
+        -refresh|--refresh)
+            # Durations are free-form; offer a few common starters.
+            COMPREPLY=( $(compgen -W "250ms 500ms 1s 2s 5s 10s 30s 1m 0s" -- "$cur") )
+            return 0
+            ;;
+    esac
+
+    opts="-config -dump -refresh -write -audit-dir -monitor -theme -columns -version -help"
+    COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    return 0
+}
+
+complete -F _nft_tui nft-tui

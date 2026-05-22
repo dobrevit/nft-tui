@@ -12,6 +12,9 @@
 PREFIX ?= /usr/local
 BINDIR := $(PREFIX)/bin
 MANDIR := $(PREFIX)/share/man/man1
+BASHCOMPDIR := $(PREFIX)/share/bash-completion/completions
+ZSHCOMPDIR  := $(PREFIX)/share/zsh/site-functions
+FISHCOMPDIR := $(PREFIX)/share/fish/vendor_completions.d
 
 VERSION ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -55,10 +58,16 @@ vet:
 install: build
 	install -D -m 0755 nft-tui $(DESTDIR)$(BINDIR)/nft-tui
 	install -D -m 0644 man/nft-tui.1 $(DESTDIR)$(MANDIR)/nft-tui.1
+	install -D -m 0644 completions/bash/nft-tui $(DESTDIR)$(BASHCOMPDIR)/nft-tui
+	install -D -m 0644 completions/zsh/_nft-tui $(DESTDIR)$(ZSHCOMPDIR)/_nft-tui
+	install -D -m 0644 completions/fish/nft-tui.fish $(DESTDIR)$(FISHCOMPDIR)/nft-tui.fish
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/nft-tui
 	rm -f $(DESTDIR)$(MANDIR)/nft-tui.1
+	rm -f $(DESTDIR)$(BASHCOMPDIR)/nft-tui
+	rm -f $(DESTDIR)$(ZSHCOMPDIR)/_nft-tui
+	rm -f $(DESTDIR)$(FISHCOMPDIR)/nft-tui.fish
 
 man:
 	groff -mandoc -Tutf8 man/nft-tui.1 | less -R

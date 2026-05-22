@@ -136,6 +136,23 @@ nfpms:
         file_info:
           mode: 0644
 
+      # Shell completions. Distros install bash completions to
+      # /usr/share/bash-completion/completions, zsh to
+      # /usr/share/zsh/site-functions, fish to
+      # /usr/share/fish/vendor_completions.d.
+      - src: completions/bash/nft-tui
+        dst: /usr/share/bash-completion/completions/nft-tui
+        file_info:
+          mode: 0644
+      - src: completions/zsh/_nft-tui
+        dst: /usr/share/zsh/site-functions/_nft-tui
+        file_info:
+          mode: 0644
+      - src: completions/fish/nft-tui.fish
+        dst: /usr/share/fish/vendor_completions.d/nft-tui.fish
+        file_info:
+          mode: 0644
+
 release:
   draft: true
   prerelease: auto
