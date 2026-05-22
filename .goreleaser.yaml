@@ -58,14 +58,14 @@ nfpms:
     package_name: nft-tui
     vendor: dobrevit
     homepage: https://github.com/dobrevit/nft-tui
-    maintainer: nft-tui maintainers <noreply@example.invalid>
+    maintainer: nft-tui maintainers <devops@dobrev.it>
     description: |
       Terminal UI for inspecting and managing nftables rulesets.
       Tree-navigable explorer with live counters, /-filter, : global
       search, htop-style live monitor with per-rule sparklines, and
       a staged-edits workflow with dry-run, atomic commit, and a
       dead-man's switch on restore.
-    license: Apache-2.0
+    license: MIT
     formats: [deb, rpm]
     dependencies:
       - nftables

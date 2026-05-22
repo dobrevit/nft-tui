@@ -88,6 +88,17 @@ For release tagging, push a `vX.Y.Z` tag and run `goreleaser release --clean`
 - [Roadmap](docs/06-roadmap.md) — phased delivery (all phases shipped)
 - [Deferred work](docs/07-deferred.md) — what was punted and why
 
+## Contributing
+
+Bug reports, patches, and ideas are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the local dev loop, code
+conventions, commit-message style, and how to report security issues
+privately (`devops@dobrev.it`).
+
+## License
+
+[MIT](LICENSE) — see the `LICENSE` file for the full text.
+
 ## Non-goals
 
 - A configuration generator for people who don't already know nftables. The
