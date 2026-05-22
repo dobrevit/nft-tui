@@ -18,11 +18,11 @@ import (
 // to syntactically-valid nft" property check.
 //
 // For each concrete op type we:
-//   1. Set up a fresh baseline (one table, one chain, one rule with
-//      a known handle).
-//   2. Build a representative op.
-//   3. Call Committer.DryRun([]Op{op}).
-//   4. Assert the dry-run accepted (nft -c -f exit 0).
+//  1. Set up a fresh baseline (one table, one chain, one rule with
+//     a known handle).
+//  2. Build a representative op.
+//  3. Call Committer.DryRun([]Op{op}).
+//  4. Assert the dry-run accepted (nft -c -f exit 0).
 //
 // The check catches mismatches between our NFT() format strings and
 // what nft actually accepts — the kind of bug where staged.NFT()
