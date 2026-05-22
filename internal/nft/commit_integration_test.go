@@ -16,6 +16,7 @@ package nft
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -81,6 +82,72 @@ func TestIntegration_DryRunAndCommit(t *testing.T) {
 	if !strings.Contains(string(out), `comment "integration"`) {
 		t.Errorf("committed comment not visible:\n%s", out)
 	}
+
+	// Now exercise replace + delete. We need the handle of the rule we
+	// just added; `nft -a` prints handles inline.
+	handles := exec.Command("nft", "-a", "list", "chain", "inet", "filter", "input")
+	hout, err := handles.CombinedOutput()
+	if err != nil {
+		t.Fatalf("nft -a list failed: %v\n%s", err, hout)
+	}
+	handle := extractHandle(string(hout), "dport 9090")
+	if handle == 0 {
+		t.Fatalf("could not find handle for the committed rule:\n%s", hout)
+	}
+
+	// Replace + delete in one commit.
+	mutate := []staged.Op{
+		&staged.ReplaceRule{
+			Family: model.FamilyINet, Table: "filter", Chain: "input",
+			Handle: handle, Body: "tcp dport 9091 counter accept",
+			Comment: "replaced",
+		},
+	}
+	if _, err := c.Commit(ctx, mutate); err != nil {
+		t.Fatalf("replace commit failed: %v", err)
+	}
+	out, _ = exec.Command("nft", "list", "chain", "inet", "filter", "input").CombinedOutput()
+	if strings.Contains(string(out), "dport 9090") {
+		t.Errorf("old rule still present after replace:\n%s", out)
+	}
+	if !strings.Contains(string(out), "dport 9091") {
+		t.Errorf("replacement rule not visible:\n%s", out)
+	}
+
+	// Delete by handle. The handle is preserved across a replace.
+	del := []staged.Op{
+		&staged.DeleteRule{
+			Family: model.FamilyINet, Table: "filter", Chain: "input",
+			Handle: handle,
+		},
+	}
+	if _, err := c.Commit(ctx, del); err != nil {
+		t.Fatalf("delete commit failed: %v", err)
+	}
+	out, _ = exec.Command("nft", "list", "chain", "inet", "filter", "input").CombinedOutput()
+	if strings.Contains(string(out), "dport 9091") {
+		t.Errorf("rule still present after delete:\n%s", out)
+	}
+}
+
+// extractHandle scans `nft -a list chain` output for the line containing
+// needle and returns the rule's handle. Returns 0 if not found.
+func extractHandle(output, needle string) uint64 {
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.Contains(line, needle) {
+			continue
+		}
+		// Lines end with `# handle N` — split on `# handle ` and parse.
+		i := strings.LastIndex(line, "# handle ")
+		if i < 0 {
+			continue
+		}
+		var h uint64
+		if _, err := fmt.Sscanf(line[i:], "# handle %d", &h); err == nil {
+			return h
+		}
+	}
+	return 0
 }
 
 // mustNFT runs `nft <stmt>` and fails the test on non-zero exit.

@@ -464,6 +464,12 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 			e.setStatus("[yellow]select a chain first to add a rule[-]")
 		}
 		return nil
+	case 'e':
+		e.editSelected()
+		return nil
+	case 'd':
+		e.stageDeleteSelected()
+		return nil
 	case 'D':
 		e.openDiff()
 		return nil
@@ -482,13 +488,11 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 // yankSelectedRule writes the canonical nft syntax of the currently-
 // selected rule to the system clipboard via OSC 52.
 func (e *Explorer) yankSelectedRule() {
-	row, _ := e.rules.GetSelection()
-	idx := row - 1 // header row offset
-	if idx < 0 || idx >= len(e.displayedRules) {
+	r := e.selectedRule()
+	if r == nil {
 		e.setStatus("[yellow]no rule selected to yank[-]")
 		return
 	}
-	r := e.displayedRules[idx]
 	if err := yankToTerminal(r.NFT); err != nil {
 		e.setStatus(fmt.Sprintf("[red]yank failed: %v[-]", err))
 		return
@@ -496,6 +500,53 @@ func (e *Explorer) yankSelectedRule() {
 	e.setStatus(fmt.Sprintf(
 		"yanked rule #%d (%d bytes) — paste into your editor / config repo",
 		r.Handle, len(r.NFT)))
+}
+
+// selectedRule returns the rule corresponding to the rules table's
+// current selection, taking the active filter into account. Returns nil
+// if there's no current chain or no selectable rule.
+func (e *Explorer) selectedRule() *model.Rule {
+	row, _ := e.rules.GetSelection()
+	idx := row - 1 // skip header row
+	if idx < 0 || idx >= len(e.displayedRules) {
+		return nil
+	}
+	return e.displayedRules[idx]
+}
+
+// stageDeleteSelected appends a DeleteRule for the currently-selected
+// rule and updates the status bar.
+func (e *Explorer) stageDeleteSelected() {
+	if !e.writeMode {
+		e.setStatus("[yellow]read-only mode — start with --write to delete[-]")
+		return
+	}
+	r := e.selectedRule()
+	if r == nil {
+		e.setStatus("[yellow]no rule selected to delete[-]")
+		return
+	}
+	e.staged.Append(&staged.DeleteRule{
+		Family: r.Chain.Table.Family,
+		Table:  r.Chain.Table.Name,
+		Chain:  r.Chain.Name,
+		Handle: r.Handle,
+	})
+	e.refreshStatusBar(e.rs.FetchedAt)
+	e.setStatus(fmt.Sprintf(
+		"staged delete of rule #%d in %s %s %s — D to review, F3 dry-run, F2 commit",
+		r.Handle, r.Chain.Table.Family, r.Chain.Table.Name, r.Chain.Name))
+}
+
+// editSelected opens the editor in modeEdit for the currently-selected
+// rule.
+func (e *Explorer) editSelected() {
+	r := e.selectedRule()
+	if r == nil {
+		e.setStatus("[yellow]no rule selected to edit[-]")
+		return
+	}
+	e.openEditorReplace(r)
 }
 
 func (e *Explorer) onTreeChange(node *tview.TreeNode) {

@@ -146,8 +146,11 @@ func archive(src, auditDir string) (string, error) {
 	if err := os.MkdirAll(auditDir, 0o750); err != nil {
 		return "", fmt.Errorf("create audit dir: %w", err)
 	}
+	// Millisecond resolution: two commits inside the same second can't
+	// collide on the audit filename. (O_EXCL would otherwise fail the
+	// later commit.)
 	dst := filepath.Join(auditDir,
-		fmt.Sprintf("audit-%s.nft", time.Now().Format("20060102-150405")))
+		fmt.Sprintf("audit-%s.nft", time.Now().Format("20060102-150405.000")))
 	if err := copyFile(src, dst); err != nil {
 		return "", fmt.Errorf("archive audit file: %w", err)
 	}
