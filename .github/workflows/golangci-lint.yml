@@ -3,6 +3,18 @@
 # Runs on every PR + push to main. The official action handles
 # matching the binary version with the config-file schema and caches
 # the analysis between runs.
+#
+# Version pinning: golangci-lint v2 uses a different config schema
+# from v1, and the v1.64.8 binary the action installs by default is
+# also built with Go 1.24 — older than our pinned toolchain
+# (toolchain go1.26.2 in go.mod), so it refuses to load with:
+#
+#   the Go language version (go1.24) used to build golangci-lint is
+#   lower than the targeted Go version (1.26.2)
+#
+# Pin v2.12.x explicitly — built with Go 1.26 and reads our v2
+# config. Matches what local contributors install via
+# `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`.
 
 name: golangci-lint
 
@@ -29,5 +41,5 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.12.2
           args: --timeout=5m
