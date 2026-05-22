@@ -26,11 +26,10 @@ builds:
     main: ./cmd/nft-tui
     binary: nft-tui
     env:
-      # CGO_ENABLED=1: linking against the host libc resolves the
-      # Ubuntu 24.04 install issue with a fully-static CGO=0 build.
-      # The .deb gains an honest libc6 dependency via dpkg-shlibdeps
-      # (auto-detected from the linked binary by nfpm).
-      - CGO_ENABLED=1
+      # google/nftables is pure Go; CGO_ENABLED=0 produces a fully
+      # static binary that runs on any glibc / musl host with no
+      # cross-toolchain needed for arm64.
+      - CGO_ENABLED=0
     goos: [linux]
     goarch: [amd64, arm64]
     flags: [-trimpath]
@@ -39,14 +38,6 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
-    # arm64 cross-compile uses the matching gcc; the workflow installs
-    # gcc-aarch64-linux-gnu so CC is on the runner's PATH.
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - CGO_ENABLED=1
-          - CC=aarch64-linux-gnu-gcc
 
 archives:
   - id: tarball

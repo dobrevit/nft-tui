@@ -25,7 +25,7 @@ LDFLAGS := -s -w \
 .PHONY: build test integration vet lint install uninstall man clean
 
 build:
-	CGO_ENABLED=1 go build -trimpath -ldflags '$(LDFLAGS)' -o nft-tui ./cmd/nft-tui
+	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o nft-tui ./cmd/nft-tui
 
 test:
 	go test ./...

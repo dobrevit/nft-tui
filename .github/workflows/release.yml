@@ -1,9 +1,9 @@
 # Release — triggered by pushing a vX.Y.Z tag.
 #
 # goreleaser reads .goreleaser.yaml at the repo root and produces:
-#   - linux/amd64 + linux/arm64 dynamic binaries (CGO_ENABLED=1)
+#   - linux/amd64 + linux/arm64 static binaries (CGO_ENABLED=0)
 #   - tar.gz archives with binary + man page + LICENSE + README + docs
-#   - .deb and .rpm packages (libc6 dep auto-detected from the binary)
+#   - .deb and .rpm packages (no libc dependency — fully static)
 #   - SHA-256 checksum file
 #
 # The GitHub release that gets created is a draft (per .goreleaser.yaml);
@@ -35,14 +35,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Install arm64 cross-toolchain
-        # CGO=1 + arm64 needs aarch64-linux-gnu-gcc on PATH. The
-        # ubuntu-latest runner is amd64-only; package the cross-gcc
-        # so goreleaser's per-arch override (CC=...) finds it.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6
