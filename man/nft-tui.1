@@ -108,6 +108,24 @@ Default
 .BR default .
 
 .TP
+\fB\-pprof\fR \fIaddr\fR
+If non-empty, expose Go's
+.B net/http/pprof
+endpoints on
+.IR addr .
+Dev-only — the endpoint leaks goroutine stacks, allocation
+profiles, and other runtime internals; bind to
+.B 127.0.0.1
+in any environment except a private workstation. Connect with
+.RS 4
+.EX
+go tool pprof http://127.0.0.1:6060/debug/pprof/heap
+go tool pprof http://127.0.0.1:6060/debug/pprof/goroutine
+.EE
+.RE
+Empty (the default) leaves pprof disabled.
+
+.TP
 \fB\-log-file\fR \fIpath\fR
 Append structured diagnostic logs to
 .IR path .

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof" // registers /debug/pprof on the default mux
 	"os"
 	"time"
 
@@ -38,6 +40,7 @@ func main() {
 		theme        = flag.String("theme", "default", "colour theme: "+ui.ThemeNames())
 		columns      = flag.String("columns", "default", "rule-list column preset: "+ui.ColumnPresetNames())
 		logFile      = flag.String("log-file", "", "append diagnostic logs to <path>; empty disables logging entirely (the TUI never writes to stderr)")
+		pprofAddr    = flag.String("pprof", "", "if non-empty, expose net/http/pprof on this address (e.g. 127.0.0.1:6060). DEV ONLY — pprof leaks runtime internals.")
 		showVersion  = flag.Bool("version", false, "print version information and exit")
 	)
 	flag.Parse()
@@ -76,6 +79,10 @@ func main() {
 	// in any package can't disrupt the TUI by sneaking into stderr.
 	closeLog := setupLogging(*logFile)
 	defer closeLog()
+
+	if *pprofAddr != "" {
+		startPprof(*pprofAddr)
+	}
 
 	conn, err := nft.NewConn()
 	if err != nil {
@@ -131,6 +138,37 @@ func main() {
 		fmt.Fprintf(os.Stderr, "nft-tui: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// startPprof spawns the net/http/pprof endpoint on addr. The
+// `_ "net/http/pprof"` import at the top of the file already
+// registered the standard handlers on the default mux; here we
+// just light up an HTTP server.
+//
+// pprof leaks goroutine stacks, allocation profiles, and any other
+// runtime detail an attacker would love — bind to localhost
+// (127.0.0.1:N or [::1]:N) in any environment other than a private
+// dev box. The flag accepts anything net.Listen accepts; we don't
+// silently rewrite to localhost because that would also be a
+// surprise. Operator's call, surfaced via slog.Warn so the audit
+// trail records it.
+func startPprof(addr string) {
+	srv := &http.Server{
+		Addr:              addr,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	slog.Warn("pprof endpoint enabled",
+		"addr", addr,
+		"note", "exposes runtime internals; localhost-only in production",
+	)
+	go func() {
+		// ListenAndServe blocks until shutdown / error. We don't
+		// gracefully shut it down — the process exit kills the
+		// goroutine and pprof clients see a connection close.
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("pprof listener failed", "addr", addr, "err", err.Error())
+		}
+	}()
 }
 
 // setupLogging configures slog according to --log-file. Empty path =>
