@@ -96,9 +96,10 @@ func (e *Explorer) editorInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 		e.stageFromEditor(false)
 		return nil
 	case tcell.KeyF6:
-		// Phase 3.2 wires this to open the diff view.
-		e.stageFromEditor(false)
-		e.setStatus("[gray]F6 (stage + diff) — diff view ships in Phase 3.2[-]")
+		// Stage and jump to the diff page so the operator can review
+		// (and Phase 3.3 commit) without an extra keystroke.
+		e.stageFromEditor(true)
+		e.openDiff()
 		return nil
 	case tcell.KeyTab:
 		// Cycle focus among the three editable widgets.

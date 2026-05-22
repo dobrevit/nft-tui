@@ -14,6 +14,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/dobrevit/nft-tui/internal/model"
+	"github.com/dobrevit/nft-tui/internal/nft"
 	"github.com/dobrevit/nft-tui/internal/staged"
 )
 
@@ -55,6 +56,7 @@ type Explorer struct {
 	// Phase 3 write-path state.
 	writeMode bool
 	staged    staged.ChangeList
+	committer *nft.Committer
 
 	// Editor widgets. Built once in build(), reused on every open.
 	editorTitle   *tview.TextView
@@ -63,6 +65,13 @@ type Explorer struct {
 	editorPreview *tview.TextView
 	editorMode    editorMode
 	editorTarget  editorTarget
+
+	// Diff/commit widgets.
+	diffSummary *tview.TextView
+	diffScript  *tview.TextView
+	diffStatus  *tview.TextView
+	dryRun      dryRunState
+	dryRunErr   string
 
 	host string
 
@@ -92,8 +101,16 @@ type Explorer struct {
 // fetch and interval drive the live-counter refresh; pass a nil fetch
 // to disable refresh (e.g. for tests or one-shot rendering).
 // writeMode toggles the Phase 3 edit affordances (a / e / d keys, the
-// rule editor page, the commit screen). False means read-only.
-func NewExplorer(app *tview.Application, rs *model.Ruleset, fetch func() (*model.Ruleset, error), interval time.Duration, writeMode bool) *Explorer {
+// rule editor page, the diff/commit screen). False means read-only.
+// committer must be non-nil iff writeMode is true.
+func NewExplorer(
+	app *tview.Application,
+	rs *model.Ruleset,
+	fetch func() (*model.Ruleset, error),
+	interval time.Duration,
+	writeMode bool,
+	committer *nft.Committer,
+) *Explorer {
 	e := &Explorer{
 		app:       app,
 		rs:        rs,
@@ -101,6 +118,7 @@ func NewExplorer(app *tview.Application, rs *model.Ruleset, fetch func() (*model
 		fetch:     fetch,
 		interval:  interval,
 		writeMode: writeMode,
+		committer: committer,
 	}
 	e.indexRules()
 	e.build()
@@ -285,7 +303,8 @@ func (e *Explorer) build() {
 		AddPage("main", main, true, true).
 		AddPage("search", e.buildSearchPage(), true, false).
 		AddPage("help", e.buildHelpPage(), true, false).
-		AddPage("editor", e.buildEditorPage(), true, false)
+		AddPage("editor", e.buildEditorPage(), true, false).
+		AddPage("diff", e.buildDiffPage(), true, false)
 
 	e.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.pages, 0, 1, true)
 	e.root.SetInputCapture(e.handleKey)
@@ -444,6 +463,9 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		} else {
 			e.setStatus("[yellow]select a chain first to add a rule[-]")
 		}
+		return nil
+	case 'D':
+		e.openDiff()
 		return nil
 	case '?':
 		if name, _ := e.pages.GetFrontPage(); name == "help" {
