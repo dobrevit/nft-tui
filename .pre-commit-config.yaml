@@ -1,0 +1,73 @@
+# pre-commit (https://pre-commit.com) — runs gofmt, go vet,
+# golangci-lint, and a few generic hygiene checks before each commit.
+#
+# Install once per workstation:
+#
+#     pipx install pre-commit            # or `pip install --user pre-commit`
+#     pre-commit install                 # wires into .git/hooks/pre-commit
+#     pre-commit install --hook-type pre-push   # runs go test on push
+#
+# After that, `git commit` invokes the hooks automatically. To run
+# them on the whole tree at any time (e.g. before opening a PR):
+#
+#     pre-commit run --all-files
+#
+# The `make precommit` target in the Makefile runs the same checks
+# without needing the pre-commit framework installed — useful in CI
+# images and for contributors who don't use Python.
+
+repos:
+  # Generic hygiene from the upstream pre-commit-hooks bundle.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.(svg|patch|diff)$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-added-large-files
+        args: ['--maxkb=512']
+
+  # Local Go hooks. `language: system` means the tools must be on
+  # the contributor's PATH — gofmt and go are part of the toolchain,
+  # golangci-lint installs via `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`.
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        # CI's lint step uses the same recursive-find pattern (see
+        # .github/workflows/ci.yml); keeping the two in sync means
+        # passing pre-commit locally is equivalent to passing CI.
+        entry: scripts/gofmt-check.sh
+        language: script
+        types: [go]
+        pass_filenames: false
+
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      # go-test is slow enough that running it on every commit annoys
+      # everyone. Gate it on pre-push instead so it runs once per
+      # `git push`, not once per commit.
+      - id: go-test
+        name: go test
+        entry: go test -race -timeout=120s ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+        stages: [pre-push]

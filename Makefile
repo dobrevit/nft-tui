@@ -22,7 +22,19 @@ LDFLAGS := -s -w \
 	-X main.commit=$(COMMIT) \
 	-X main.date=$(DATE)
 
-.PHONY: build test integration vet lint install uninstall man clean
+.PHONY: build test integration vet lint precommit install uninstall man clean
+
+# precommit runs the same set of checks that .pre-commit-config.yaml
+# does, but without the pre-commit framework — for CI images, for
+# anyone who doesn't have pipx/pre-commit, and as a sanity sweep
+# before opening a PR.
+precommit:
+	./scripts/gofmt-check.sh
+	go vet ./...
+	@command -v golangci-lint >/dev/null 2>&1 \
+		&& golangci-lint run ./... \
+		|| echo 'skipped: golangci-lint not on $$PATH (install via `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`)'
+	go test -race -timeout=120s ./...
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o nft-tui ./cmd/nft-tui

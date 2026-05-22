@@ -1,0 +1,48 @@
+# pre-commit — runs every hook from .pre-commit-config.yaml across the
+# entire tree on every PR and push. Contributors who skipped the
+# local install still get the same enforcement, and the safety-net
+# means we won't be bitten by a hand-edit that bypassed the local
+# hook again.
+
+name: pre-commit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-commit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: pip
+
+      - name: Install golangci-lint
+        # The local pre-commit hook references golangci-lint with
+        # language: system, so it must be on PATH in CI too.
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          install-mode: binary
+          # Don't actually run it here — the pre-commit step below
+          # will. We just want the binary available.
+          args: --version
+
+      - uses: pre-commit/action@v3.0.1

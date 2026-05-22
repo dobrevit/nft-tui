@@ -29,7 +29,27 @@ cd nft-tui
 make build         # → ./nft-tui (static, CGO disabled)
 make test          # unit tests (no kernel needed)
 make integration   # integration tests inside unshare -rn
+make precommit     # gofmt + go vet + golangci-lint + go test
 ```
+
+### Pre-commit hooks (recommended)
+
+The repo ships a `.pre-commit-config.yaml` so [pre-commit](https://pre-commit.com)
+runs gofmt, go vet, golangci-lint, and a few hygiene checks on every
+commit (and `go test` on every push). One-time setup:
+
+```sh
+pipx install pre-commit   # or: pip install --user pre-commit
+pre-commit install                          # commit-time hooks
+pre-commit install --hook-type pre-push     # push-time go test
+```
+
+After that, `git commit` runs the hooks. If gofmt auto-formatted
+anything, the commit aborts with a clear message — `git add` the
+fixups and try again.
+
+Don't want the pre-commit framework? `make precommit` runs the same
+checks without it.
 
 If `make integration` fails with `operation not permitted`, your
 distro doesn't allow unprivileged user namespaces. Either enable
@@ -59,7 +79,8 @@ Smaller good-first-issues:
 
 ## Code conventions
 
-- **`gofmt`** is mandatory (`go fmt ./...` before committing).
+- **`gofmt`** is mandatory. The pre-commit hook (or `make precommit`)
+  runs it for you; CI rejects unformatted code.
 - **`go vet ./...`** must be clean.
 - **No new packages without a reason**. The existing layout is
   `internal/model`, `internal/nft` (read + write adapter),

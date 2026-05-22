@@ -28,9 +28,9 @@ func FuzzRenderRule(f *testing.F) {
 	// sequence of "next expression type" selectors; data feeds their
 	// payloads. The four seeds below cover the common shapes the
 	// hand-written tests in render_test.go exercise.
-	f.Add([]byte{}, []byte{})                               // empty rule
-	f.Add([]byte{0x00, 0x02, 0x07}, []byte{0x01, 0x01, 0x00, 'l', 'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}) // iif+cmp+verdict
-	f.Add([]byte{0x01, 0x02, 0x07}, []byte{0x01, 0x01, 0x0c, 0x04, 0x00, 0x01, 0x04, 0x0a, 0x00, 0x00, 0x00, 0x00}) // ip saddr cmp verdict
+	f.Add([]byte{}, []byte{})                                                                                                                                                         // empty rule
+	f.Add([]byte{0x00, 0x02, 0x07}, []byte{0x01, 0x01, 0x00, 'l', 'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})                                                                        // iif+cmp+verdict
+	f.Add([]byte{0x01, 0x02, 0x07}, []byte{0x01, 0x01, 0x0c, 0x04, 0x00, 0x01, 0x04, 0x0a, 0x00, 0x00, 0x00, 0x00})                                                                   // ip saddr cmp verdict
 	f.Add([]byte{0x02, 0x03, 0x02, 0x07}, []byte{0x01, 0x01, 0x09, 0x01, 0x01, 0x04, 0x06, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x16, 0x00}) // ct + bitwise + cmp + verdict
 
 	f.Fuzz(func(t *testing.T, opcodes, data []byte) {
@@ -182,4 +182,3 @@ func buildSyntheticExprs(opcodes, data []byte) []expr.Any {
 	}
 	return out
 }
-
