@@ -46,6 +46,11 @@ type Explorer struct {
 	// the corresponding node. Refreshed on every refreshTree call.
 	nodeByChain map[*model.Chain]*tview.TreeNode
 
+	// displayedRules mirrors the rule rows currently in the rules Table
+	// (post-filter), so a selected row index maps unambiguously to a rule
+	// for actions like yank.
+	displayedRules []*model.Rule
+
 	host string
 
 	// Refresh state.
@@ -254,7 +259,8 @@ func (e *Explorer) build() {
 
 	e.pages = tview.NewPages().
 		AddPage("main", main, true, true).
-		AddPage("search", e.buildSearchPage(), true, false)
+		AddPage("search", e.buildSearchPage(), true, false).
+		AddPage("help", e.buildHelpPage(), true, false)
 
 	e.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.pages, 0, 1, true)
 	e.root.SetInputCapture(e.handleKey)
@@ -384,8 +390,38 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		e.pages.ShowPage("search")
 		e.app.SetFocus(e.searchInput)
 		return nil
+	case 'y':
+		e.yankSelectedRule()
+		return nil
+	case '?':
+		if name, _ := e.pages.GetFrontPage(); name == "help" {
+			e.pages.HidePage("help")
+			e.app.SetFocus(e.tree)
+		} else {
+			e.pages.ShowPage("help")
+		}
+		return nil
 	}
 	return ev
+}
+
+// yankSelectedRule writes the canonical nft syntax of the currently-
+// selected rule to the system clipboard via OSC 52.
+func (e *Explorer) yankSelectedRule() {
+	row, _ := e.rules.GetSelection()
+	idx := row - 1 // header row offset
+	if idx < 0 || idx >= len(e.displayedRules) {
+		e.setStatus("[yellow]no rule selected to yank[-]")
+		return
+	}
+	r := e.displayedRules[idx]
+	if err := yankToTerminal(r.NFT); err != nil {
+		e.setStatus(fmt.Sprintf("[red]yank failed: %v[-]", err))
+		return
+	}
+	e.setStatus(fmt.Sprintf(
+		"yanked rule #%d (%d bytes) — paste into your editor / config repo",
+		r.Handle, len(r.NFT)))
 }
 
 func (e *Explorer) onTreeChange(node *tview.TreeNode) {
@@ -429,6 +465,7 @@ func (e *Explorer) showChain(c *model.Chain) {
 		e.rules.SetCell(0, col, headerCell(h))
 	}
 
+	e.displayedRules = e.displayedRules[:0]
 	displayRow := 1
 	matched := 0
 	for _, r := range c.Rules {
@@ -436,6 +473,7 @@ func (e *Explorer) showChain(c *model.Chain) {
 			continue
 		}
 		matched++
+		e.displayedRules = append(e.displayedRules, r)
 		e.rules.SetCell(displayRow, 0, dataCell(fmt.Sprintf("%d", r.Handle)))
 		e.rules.SetCell(displayRow, 1, dataCell(humanCount(r.Counter.Packets)))
 		e.rules.SetCell(displayRow, 2, dataCell(humanBytes(r.Counter.Bytes)))
