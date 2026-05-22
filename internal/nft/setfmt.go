@@ -79,20 +79,44 @@ func renderSetElements(s *model.Set) []string {
 	return out
 }
 
-// renderMapElements emits "key : value" pairs for map elements. Interval
-// sentinels in maps are rare (interval-keyed maps); we drop them on the
-// Phase 2 floor for now and surface a TODO marker so the operator knows.
+// renderMapElements emits "key : value" pairs for map elements. For
+// interval-keyed maps (rare, e.g. `{ 1024-2048 : jump LAN }`) the
+// kernel encodes each entry as two elements — a start with the value
+// and an end sentinel whose Key is the upper bound. We pair them
+// into "low-high : value" on emit.
 func renderMapElements(s *model.Set) []string {
 	out := make([]string, 0, len(s.Elements))
-	for _, el := range s.Elements {
+	flush := func(start *model.SetElement, endKey string) {
+		v := start.Value
+		if v == "" {
+			v = "<missing-value>"
+		}
+		if endKey == "" {
+			out = append(out, start.Key+" : "+v)
+		} else {
+			out = append(out, start.Key+"-"+endKey+" : "+v)
+		}
+	}
+	var pending *model.SetElement
+	for i := range s.Elements {
+		el := &s.Elements[i]
 		if el.IntervalEnd {
+			if pending != nil {
+				flush(pending, el.Key)
+				pending = nil
+			}
 			continue
 		}
-		if el.Value == "" {
-			out = append(out, el.Key+" : <missing-value>")
-		} else {
-			out = append(out, el.Key+" : "+el.Value)
+		// Non-interval start. Flush any prior pending element first
+		// (a plain map would never have a non-flushed pending here,
+		// but be defensive).
+		if pending != nil {
+			flush(pending, "")
 		}
+		pending = el
+	}
+	if pending != nil {
+		flush(pending, "")
 	}
 	return out
 }
