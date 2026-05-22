@@ -30,6 +30,22 @@ type Explorer struct {
 	status *tview.TextView
 	root   *tview.Flex
 
+	// pages stacks the explorer body and modal-style overlays (search, help).
+	pages *tview.Pages
+	// rulesFlex wraps the rules Table with the filter InputField so the
+	// filter can collapse without rebuilding the page.
+	rulesFlex   *tview.Flex
+	filterInput *tview.InputField
+	filter      string
+
+	// Search overlay (`:` modal).
+	searchInput   *tview.InputField
+	searchResults *tview.List
+
+	// nodeByChain maps a chain into the TreeView so jumpToChain can find
+	// the corresponding node. Refreshed on every refreshTree call.
+	nodeByChain map[*model.Chain]*tview.TreeNode
+
 	host string
 
 	// Refresh state.
@@ -230,12 +246,17 @@ func (e *Explorer) build() {
 		AddItem(e.tree, 32, 0, true).
 		AddItem(e.detail, 0, 1, false)
 
-	e.root = tview.NewFlex().
+	main := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(e.header, 1, 0, false).
 		AddItem(body, 0, 1, true).
 		AddItem(e.status, 1, 0, false)
 
+	e.pages = tview.NewPages().
+		AddPage("main", main, true, true).
+		AddPage("search", e.buildSearchPage(), true, false)
+
+	e.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.pages, 0, 1, true)
 	e.root.SetInputCapture(e.handleKey)
 }
 
@@ -263,6 +284,7 @@ func (e *Explorer) buildTree() {
 // and swaps it into the existing TreeView. The TreeView widget identity
 // is preserved so its place in the layout is stable.
 func (e *Explorer) refreshTree() {
+	e.nodeByChain = make(map[*model.Chain]*tview.TreeNode)
 	rootNode := tview.NewTreeNode(fmt.Sprintf("Ruleset (%d tables)", len(e.rs.Tables))).
 		SetColor(tcell.ColorYellow).
 		SetSelectable(false)
@@ -283,9 +305,11 @@ func (e *Explorer) buildTableNode(t *model.Table) *tview.TreeNode {
 			label = fmt.Sprintf("%s   {%s, %s, prio %d, %s}",
 				c.Name, c.Type, c.Hook, c.Priority, c.Policy)
 		}
-		tnode.AddChild(tview.NewTreeNode(label).
+		cnode := tview.NewTreeNode(label).
 			SetReference(c).
-			SetSelectable(true))
+			SetSelectable(true)
+		e.nodeByChain[c] = cnode
+		tnode.AddChild(cnode)
 	}
 	if len(t.Sets) > 0 {
 		sgroup := tview.NewTreeNode(fmt.Sprintf("sets (%d)", len(t.Sets))).
@@ -312,8 +336,13 @@ func (e *Explorer) buildDetail() {
 		SetWordWrap(true)
 	e.info.SetBorder(true).SetTitle(" Info ").SetTitleAlign(tview.AlignLeft)
 
+	e.filterInput = e.buildFilterInput()
+	e.rulesFlex = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(e.rules, 0, 1, true).
+		AddItem(e.filterInput, 0, 0, false)
+
 	e.detail = tview.NewPages().
-		AddPage("rules", e.rules, true, false).
+		AddPage("rules", e.rulesFlex, true, false).
 		AddPage("info", e.info, true, true)
 }
 
@@ -325,6 +354,12 @@ func (e *Explorer) buildStatus() {
 }
 
 func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
+	// When focus is in an input field, let it consume printable keys.
+	focus := e.app.GetFocus()
+	if focus == e.filterInput || focus == e.searchInput {
+		return ev
+	}
+
 	if ev.Key() == tcell.KeyTab {
 		if e.app.GetFocus() == e.tree {
 			e.app.SetFocus(e.rules)
@@ -339,6 +374,15 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'R':
 		e.FullRebuild()
+		return nil
+	case '/':
+		e.showFilter()
+		return nil
+	case ':':
+		e.searchInput.SetText("")
+		e.searchResults.Clear()
+		e.pages.ShowPage("search")
+		e.app.SetFocus(e.searchInput)
 		return nil
 	}
 	return ev
@@ -368,11 +412,15 @@ func (e *Explorer) onTreeChange(node *tview.TreeNode) {
 func (e *Explorer) showChain(c *model.Chain) {
 	e.detail.SwitchToPage("rules")
 	e.rules.Clear()
+
 	title := fmt.Sprintf(" %s %s › %s ", c.Table.Family, c.Table.Name, c.Name)
 	if c.IsBase {
 		title = fmt.Sprintf(" %s %s › %s  [%s, %s, prio %d, policy %s] ",
 			c.Table.Family, c.Table.Name, c.Name,
 			c.Type, c.Hook, c.Priority, c.Policy)
+	}
+	if e.filter != "" {
+		title += fmt.Sprintf(" — filter: %q", e.filter)
 	}
 	e.rules.SetTitle(title)
 
@@ -381,20 +429,30 @@ func (e *Explorer) showChain(c *model.Chain) {
 		e.rules.SetCell(0, col, headerCell(h))
 	}
 
-	for row, r := range c.Rules {
-		e.rules.SetCell(row+1, 0, dataCell(fmt.Sprintf("%d", r.Handle)))
-		e.rules.SetCell(row+1, 1, dataCell(humanCount(r.Counter.Packets)))
-		e.rules.SetCell(row+1, 2, dataCell(humanBytes(r.Counter.Bytes)))
-		e.rules.SetCell(row+1, 3, dataCell(blankDash(r.IIfName)))
-		e.rules.SetCell(row+1, 4, dataCell(blankDash(r.OIfName)))
-		e.rules.SetCell(row+1, 5, dataCell(blankDash(r.SAddr)))
-		e.rules.SetCell(row+1, 6, dataCell(blankDash(r.DAddr)))
-		e.rules.SetCell(row+1, 7, dataCell(blankDash(r.DPort)))
-		e.rules.SetCell(row+1, 8, dataCell(blankDash(r.Verdict)))
-		e.rules.SetCell(row+1, 9, dataCell(truncate(r.NFT, 80)))
+	displayRow := 1
+	matched := 0
+	for _, r := range c.Rules {
+		if !ruleMatches(r, e.filter) {
+			continue
+		}
+		matched++
+		e.rules.SetCell(displayRow, 0, dataCell(fmt.Sprintf("%d", r.Handle)))
+		e.rules.SetCell(displayRow, 1, dataCell(humanCount(r.Counter.Packets)))
+		e.rules.SetCell(displayRow, 2, dataCell(humanBytes(r.Counter.Bytes)))
+		e.rules.SetCell(displayRow, 3, dataCell(blankDash(r.IIfName)))
+		e.rules.SetCell(displayRow, 4, dataCell(blankDash(r.OIfName)))
+		e.rules.SetCell(displayRow, 5, dataCell(blankDash(r.SAddr)))
+		e.rules.SetCell(displayRow, 6, dataCell(blankDash(r.DAddr)))
+		e.rules.SetCell(displayRow, 7, dataCell(blankDash(r.DPort)))
+		e.rules.SetCell(displayRow, 8, dataCell(blankDash(r.Verdict)))
+		e.rules.SetCell(displayRow, 9, dataCell(truncate(r.NFT, 80)))
+		displayRow++
 	}
-	if len(c.Rules) == 0 {
+	switch {
+	case len(c.Rules) == 0:
 		e.rules.SetCell(1, 0, dataCell("[gray]<empty>[-]"))
+	case matched == 0:
+		e.rules.SetCell(1, 0, dataCell("[gray]<no matches for filter>[-]"))
 	}
 }
 
