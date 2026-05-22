@@ -81,25 +81,27 @@ syntax. Unrecognised expressions fall back to a typed placeholder
   user/network namespace: `unshare -rn nft-tui`. Empty ruleset, but the
   netlink calls work.
 
-### Write (Phase 3 — open question)
+### Write (decided 2026-05-22, Phase 3)
 
-Two viable approaches; final call deferred to Phase 3 kick-off:
+**Shell out to `nft -f <staged-file>`.** Settled in favour of netlink
+batches for four reasons:
 
-- **Netlink batches** via `Conn.Flush()`. Atomic per batch (one
-  `NFT_MSG_BEGIN`/`NFT_MSG_END`), pure Go, no shell-out, but we lose the
-  "audit log is a file admins can paste into Ansible" property unless we
-  also emit the equivalent nft text.
-- **Shell out to `nft -f <staged-file>`**. Atomic by virtue of nft's own
-  transaction, gives a human-readable audit trail for free, and `nft -c`
-  is a battle-tested validator. But it splits the adapter between two
-  mechanisms.
+1. **Dry-run.** `nft -c -f <file>` is a battle-tested validator with
+   precise line/column error messages. Re-implementing nft's
+   syntax/semantic checker in Go is months of work and risk.
+2. **Audit trail.** The staged file is the audit log. Admins can paste
+   it into Ansible / a config repo unchanged. That's a Phase 1 success
+   criterion (see [01-product-brief.md](01-product-brief.md)).
+3. **Raw-mode editing (F8).** Lets the user type nft syntax directly.
+   With netlink writes we'd need a Go-side nft parser.
+4. **Cost is negligible.** Commits happen at human speed; the per-commit
+   fork is irrelevant.
 
-Likely answer: **netlink for the actual commit, with our renderer also
-producing an `nft` text artefact written next to the audit log.** That
-preserves the "single source of truth in nft syntax" property without
-forking a subprocess on the commit hot path.
+The split (netlink read, shell write) is acceptable because the read
+path is on the hot loop (every 2 s refresh) and the write path is not.
 
-For Phase 2 (read-only) this isn't on the critical path.
+`internal/staged` owns the staged-op data model; `internal/nft/commit.go`
+owns the serialiser + dry-run + commit + audit-archive plumbing.
 
 ### Permissions
 
