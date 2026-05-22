@@ -1,0 +1,277 @@
+.\" nft-tui.1 — see also nft(8), nftables(8)
+.TH NFT-TUI 1 "May 2026" "nft-tui" "User Commands"
+
+.SH NAME
+nft-tui \- terminal UI for inspecting and managing nftables rulesets
+
+.SH SYNOPSIS
+.B nft-tui
+.RI [ OPTIONS ]
+
+.SH DESCRIPTION
+.B nft-tui
+is an interactive terminal UI for the Linux nftables firewall.
+It presents the live ruleset as a navigable tree (family → table →
+chain → rule), with per-rule packet/byte counters refreshed live,
+search and filter across the whole ruleset, an htop-style live
+monitor with per-rule sparklines, and (with
+.BR \-\-write )
+a staged-edits workflow: typed edits accumulate locally, dry-run via
+.BR "nft \-c" ,
+commit atomically via
+.BR "nft \-f" ,
+and every commit is archived to an audit log.
+Snapshot and restore are guarded by a 60-second dead-man's switch:
+if the operator doesn't confirm within the window, the previous
+ruleset is automatically rolled back.
+
+.B nft-tui
+talks to the kernel directly over netlink via the
+.UR https://github.com/google/nftables
+.B google/nftables
+.UE
+library for the read path, and shells out to
+.B nft
+for writes so the operator gets nft's battle-tested validator on
+every dry-run and a paste-ready audit file after every commit.
+
+.SH OPTIONS
+.TP
+.B \-dump
+Fetch the ruleset, print a structured summary to stdout, and exit.
+Useful in scripts or smoke tests where the TUI isn't desired.
+
+.TP
+\fB\-refresh\fR \fIduration\fR
+Live-counter refresh interval (e.g.\&
+.BR 500ms ,
+.BR 5s ).
+Default
+.BR 2s .
+Passing
+.B 0
+disables the polling loop; with
+.B \-monitor
+on, the UI still refreshes immediately on every kernel mutation.
+
+.TP
+.B \-write
+Enable edit/commit affordances (\fBa\fR / \fBe\fR / \fBd\fR / \fBo\fR /
+\fBO\fR keys, the editor page,
+.B :w
+/
+.B :r
+commands, the F2 commit modal). Default is read-only.
+
+.TP
+\fB\-audit-dir\fR \fIpath\fR
+Directory where committed nft scripts are archived. Default is
+.B $XDG_STATE_HOME/nft-tui
+(falls back to
+.BR ~/.local/state/nft-tui ).
+A rolling
+.B audit.log
+is kept alongside the per-commit files.
+
+.TP
+.B \-monitor
+Subscribe to kernel netlink events (\fBNFT_MSG_NEW*\fR / \fBNFT_MSG_DEL*\fR)
+so the UI refreshes immediately when another process changes the
+ruleset. Default
+.BR on .
+
+.TP
+\fB\-theme\fR \fIname\fR
+Colour theme:
+.BR default ,
+.BR high-contrast ,
+or
+.BR mono .
+Default
+.BR default .
+
+.SH KEYS
+.SS Navigation
+.TP
+\fBj\fR / \fBk\fR / \fB↓\fR / \fB↑\fR
+Move down / up.
+.TP
+\fBh\fR / \fBl\fR / \fB←\fR / \fB→\fR
+Collapse / expand tree node, or switch pane.
+.TP
+\fBTab\fR
+Cycle pane focus.
+.TP
+\fBg\fR / \fBG\fR
+Top / bottom.
+
+.SS Filter and search
+.TP
+.B /
+Filter the current rule list incrementally.
+.TP
+.B :
+Global search across the whole ruleset, OR command line:
+.B :w
+.I path
+snapshots the live ruleset to
+.IR path ;
+.B :r
+.I path
+restores from a snapshot (with a 60-second dead-man's switch).
+
+.SS Yank and reload
+.TP
+.B y
+Yank the selected rule's nft syntax to the clipboard via OSC 52
+(works over SSH).
+.TP
+.B R
+Full reload — useful when the status bar shows kernel drift the
+auto-rebuild couldn't recover from.
+.TP
+.B m
+Open the live monitor (top-N rules by pps / bps / Δpkts).
+
+.SS Edit (requires \-write)
+.TP
+.B a
+Add a rule to the current chain (append).
+.TP
+\fBo\fR / \fBO\fR
+Insert after / before the selected rule.
+.TP
+.B e
+Edit (replace) the selected rule.
+.TP
+.B d
+Stage a delete of the selected rule.
+.TP
+.B D
+Open the staged-changes / diff page.
+
+.SS Diff page
+.TP
+.B F3
+Dry-run via
+.BR "nft \-c \-f" .
+.TP
+.B F2
+Commit via
+.BR "nft \-f"
+(requires a passing dry-run).
+.TP
+\fBu\fR / \fBU\fR
+Unstage last / unstage all.
+
+.SS Editor page
+.TP
+.B F5
+Stage the rule.
+.TP
+.B F6
+Stage and open the diff page.
+.TP
+.B F8
+Toggle between form and raw nft views.
+
+.SS Modes
+.TP
+.B q
+Quit.
+.TP
+.B ?
+Help overlay (toggle).
+
+.SH FILES
+.TP
+.B $XDG_STATE_HOME/nft-tui/audit.log
+Append-only audit log. One header per operation:
+timestamp, UID, username, action (commit / restore / rollback),
+op count, archived filename.
+.TP
+.B $XDG_STATE_HOME/nft-tui/audit-YYYYMMDD-HHMMSS.NNN.nft
+Per-commit archive: the exact nft script applied. Pastes cleanly
+into Ansible or a config-management repo.
+.TP
+.B $XDG_STATE_HOME/nft-tui/rollback-YYYYMMDD-HHMMSS.NNN.nft
+Auto-captured rollback snapshot taken immediately before a
+.B :r
+restore is applied. Used by the dead-man's switch.
+
+.SH ENVIRONMENT
+.TP
+.B XDG_STATE_HOME
+If set, overrides the audit dir base (default
+.BR ~/.local/state ).
+.TP
+.B HOME
+Used to expand
+.B ~/
+in paths passed to
+.B :w
+and
+.BR :r .
+
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit (q / Ctrl-C).
+.TP
+.B 1
+Could not open the netlink connection, or
+.B \-dump
+encountered a fatal error.
+.TP
+.B 2
+Invalid argument (e.g. unknown
+.BR \-theme ).
+
+.SH EXAMPLES
+Read-only inspection of the live ruleset:
+.RS 4
+.EX
+$ sudo nft-tui
+.EE
+.RE
+
+Edit and commit with a 250 ms counter refresh:
+.RS 4
+.EX
+$ sudo nft-tui \-write \-refresh 250ms
+.EE
+.RE
+
+Snapshot the current ruleset, then restore on demand from inside
+the TUI:
+.RS 4
+.EX
+:w ~/edge-router-baseline.nft
+:r ~/edge-router-baseline.nft
+.EE
+.RE
+
+Dump the parsed ruleset (no TUI, ideal for piping to grep / diff):
+.RS 4
+.EX
+$ sudo nft-tui \-dump | grep "dport 22"
+.EE
+.RE
+
+Development without privileges (uses an unshared net+user namespace):
+.RS 4
+.EX
+$ unshare \-rn ./nft-tui
+.EE
+.RE
+
+.SH SEE ALSO
+.BR nft (8),
+.BR nftables (8),
+.BR libnftables (3)
+
+.SH AUTHORS
+.B nft-tui
+is developed in the open at
+.UR https://github.com/dobrevit/nft-tui
+.UE .
