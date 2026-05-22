@@ -222,6 +222,7 @@ func convertRule(r *nftables.Rule, ch *model.Chain, sets map[string]*model.Set) 
 			Present: true,
 		}
 	}
+	mr.HasUnknownExpr = rendered.HasUnknownExpr
 	if c, ok := userdata.GetString(r.UserData, userdata.TypeComment); ok && c != "" {
 		mr.Comment = c
 		// nft's textual form puts the comment at the end of the rule.

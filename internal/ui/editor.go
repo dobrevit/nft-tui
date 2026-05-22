@@ -192,13 +192,37 @@ func (e *Explorer) openEditorReplace(r *model.Rule) {
 	if r.Comment != "" {
 		comment = r.Comment
 	}
-	e.resetForm()
 	e.editorBody.SetText(body, true)
 	e.editorComment.SetText(comment)
-	e.showRawView()
+
+	// If the rule's expressions all decoded cleanly (no `<expr:T>`
+	// placeholders in NFT) we can faithfully repopulate the form
+	// from the rule's structured fields and let the operator edit
+	// via the form UI. If anything didn't decode, opening the form
+	// would silently drop the unknown clause on save — so we keep
+	// modeEdit in raw view for that case and let F8 toggle if the
+	// operator wants to try anyway.
+	if r.HasUnknownExpr {
+		e.resetForm()
+		e.showRawView()
+	} else {
+		e.formFields = formFieldsFromRule(r)
+		e.editorForm.Clear(true)
+		// Rebuild the form to apply the new field values — tview.Form
+		// has no "load from struct" API; we reconstruct from the
+		// updated formFields. buildEditorForm reads e.formFields if
+		// non-nil instead of starting from zero.
+		*e.editorForm = *e.buildEditorForm()
+		e.showFormView()
+	}
+
 	e.refreshEditorPreview()
 	e.pages.ShowPage("editor")
-	e.app.SetFocus(e.editorBody)
+	if e.editorView == viewRaw {
+		e.app.SetFocus(e.editorBody)
+	} else {
+		e.app.SetFocus(e.editorForm)
+	}
 }
 
 // closeEditor hides the editor page and returns focus to the tree.

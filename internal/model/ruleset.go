@@ -77,6 +77,15 @@ type Rule struct {
 
 	Counter Counter
 
+	// HasUnknownExpr is true when the renderer encountered at least
+	// one expression it couldn't fully decode (and emitted a
+	// `<expr:T>` / `<xt-match:N>` placeholder in NFT). Set by
+	// nft.convertRule from the RuleRendering. The form editor
+	// consults this flag — if any decoded info is missing, opening
+	// the structured form would lose the unknown clause on save, so
+	// modeEdit falls back to raw mode for those rules.
+	HasUnknownExpr bool `json:"-"`
+
 	// SearchKey is a precomputed lower-cased concatenation of every field
 	// the filter looks at. Built once at read time (call RebuildSearchKey
 	// after constructing a Rule) so per-keystroke substring filtering is

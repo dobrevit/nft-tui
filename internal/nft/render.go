@@ -46,6 +46,13 @@ type RuleRendering struct {
 	CounterPackets uint64
 	CounterBytes   uint64
 	HasCounter     bool
+
+	// HasUnknownExpr is set when at least one expression in the rule
+	// did not match a renderer case and was emitted as a `<expr:T>`
+	// placeholder. The UI checks this when deciding whether to open
+	// the structured form (the form can't faithfully represent the
+	// rule if any decoded info is missing) vs the raw editor.
+	HasUnknownExpr bool
 }
 
 // Stable identifiers for the contents of a netlink register, used as
@@ -182,6 +189,7 @@ func (r *ruleRenderer) handleExpr(e expr.Any) {
 		// handled separately. We surface unknown immediates so the
 		// operator can drop to raw mode.
 		r.actions = append(r.actions, "<expr:immediate>")
+		r.out.HasUnknownExpr = true
 	case *expr.Reject:
 		r.actions = append(r.actions, renderReject(x))
 	case *expr.Limit:
@@ -196,10 +204,13 @@ func (r *ruleRenderer) handleExpr(e expr.Any) {
 		r.actions = append(r.actions, "redirect")
 	case *expr.Match:
 		r.emitMatch(fmt.Sprintf("<xt-match:%s>", x.Name))
+		r.out.HasUnknownExpr = true
 	case *expr.Target:
 		r.actions = append(r.actions, fmt.Sprintf("<xt-target:%s>", x.Name))
+		r.out.HasUnknownExpr = true
 	default:
 		r.actions = append(r.actions, fmt.Sprintf("<expr:%T>", e))
+		r.out.HasUnknownExpr = true
 	}
 }
 
@@ -212,6 +223,7 @@ func (r *ruleRenderer) handleBitwise(x *expr.Bitwise) {
 		return
 	}
 	r.regs[x.DestRegister] = regInfo{kind: "bitwise", label: "<expr:bitwise>"}
+	r.out.HasUnknownExpr = true
 }
 
 // handleCmp emits a match line (or, for special patterns, mutates
@@ -220,6 +232,7 @@ func (r *ruleRenderer) handleCmp(x *expr.Cmp) {
 	info, ok := r.regs[x.Register]
 	if !ok {
 		r.emitMatch(fmt.Sprintf("<expr:cmp reg=%d>", x.Register))
+		r.out.HasUnknownExpr = true
 		return
 	}
 	if r.cmpCTStateMask(info, x) {

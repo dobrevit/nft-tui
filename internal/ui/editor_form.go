@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/rivo/tview"
+
+	"github.com/dobrevit/nft-tui/internal/model"
 )
 
 // editorViewMode selects between the structured form and the raw-nft
@@ -40,6 +42,52 @@ type formFields struct {
 }
 
 var ctStateLabels = []string{"established", "related", "new", "invalid"}
+
+// formFieldsFromRule maps an already-decoded model.Rule back into a
+// formFields struct. Used when openEditorReplace decides the form
+// view is safe to open (rule has no unknown expressions).
+//
+// Fields the renderer doesn't decode (log + log prefix) are left at
+// their zero value — the form view will not pre-populate them, but
+// the operator can re-tick them and the regenerated body will still
+// include other parts. Log preservation would need the renderer to
+// extract Log.Data, which it currently only emits as text.
+func formFieldsFromRule(r *model.Rule) *formFields {
+	ff := &formFields{ctStates: make([]bool, len(ctStateLabels))}
+	ff.iifname = r.IIfName
+	ff.oifname = r.OIfName
+	ff.saddr = r.SAddr
+	ff.daddr = r.DAddr
+	ff.sport = r.SPort
+	ff.dport = r.DPort
+	ff.counter = r.Counter.Present
+	ff.verdict = r.Verdict
+
+	// Proto: the form dropdown has "any" as the zero option; map an
+	// empty Proto onto that so it round-trips cleanly.
+	if r.Proto == "" {
+		ff.proto = "any"
+	} else {
+		ff.proto = r.Proto
+	}
+
+	// CT state: model.Rule.CTState renders as either a single name
+	// ("established") or a comma-joined list inside braces
+	// ("{ established, related }"). Strip the braces if present
+	// and tick each known name.
+	cts := strings.Trim(strings.TrimSpace(r.CTState), "{} ")
+	if cts != "" {
+		for _, name := range strings.Split(cts, ",") {
+			name = strings.TrimSpace(name)
+			for i, known := range ctStateLabels {
+				if known == name {
+					ff.ctStates[i] = true
+				}
+			}
+		}
+	}
+	return ff
+}
 
 // regenerateBody builds an nft rule body from the current form fields.
 // Order matches nft's canonical layout (matches first, then statements,
@@ -115,9 +163,13 @@ func (e *Explorer) buildEditorForm() *tview.Form {
 		SetTitle(" Form — F8 to switch to raw nft ").
 		SetTitleAlign(tview.AlignLeft)
 
-	// Tracked form values. Captured once and mutated by the field
-	// callbacks below.
-	e.formFields = &formFields{ctStates: make([]bool, len(ctStateLabels))}
+	// Tracked form values. If the caller pre-populated e.formFields
+	// (modeEdit prefilling from an existing rule), use it as the
+	// initial state so the widgets below render with the right
+	// values; otherwise start from zero.
+	if e.formFields == nil {
+		e.formFields = &formFields{ctStates: make([]bool, len(ctStateLabels))}
+	}
 	ff := e.formFields
 
 	push := func() {
@@ -128,39 +180,56 @@ func (e *Explorer) buildEditorForm() *tview.Form {
 		e.refreshEditorPreview()
 	}
 
-	f.AddInputField("iifname", "", 16, nil, func(s string) { ff.iifname = s; push() })
-	f.AddInputField("oifname", "", 16, nil, func(s string) { ff.oifname = s; push() })
-	f.AddInputField("ip saddr", "", 24, nil, func(s string) { ff.saddr = s; push() })
-	f.AddInputField("ip daddr", "", 24, nil, func(s string) { ff.daddr = s; push() })
+	// Each widget reads its initial value from ff so an external
+	// caller (modeEdit prefill via formFieldsFromRule) sees their
+	// state on screen. A fresh modeAdd open passes a zero-value ff
+	// and so renders blank fields.
+	f.AddInputField("iifname", ff.iifname, 16, nil, func(s string) { ff.iifname = s; push() })
+	f.AddInputField("oifname", ff.oifname, 16, nil, func(s string) { ff.oifname = s; push() })
+	f.AddInputField("ip saddr", ff.saddr, 24, nil, func(s string) { ff.saddr = s; push() })
+	f.AddInputField("ip daddr", ff.daddr, 24, nil, func(s string) { ff.daddr = s; push() })
 
 	protos := []string{"any", "tcp", "udp", "icmp", "icmpv6"}
-	f.AddDropDown("L4 proto", protos, 0, func(opt string, _ int) {
+	f.AddDropDown("L4 proto", protos, indexOf(protos, ff.proto, 0), func(opt string, _ int) {
 		ff.proto = opt
 		push()
 	})
 
-	f.AddInputField("sport", "", 10, nil, func(s string) { ff.sport = s; push() })
-	f.AddInputField("dport", "", 10, nil, func(s string) { ff.dport = s; push() })
+	f.AddInputField("sport", ff.sport, 10, nil, func(s string) { ff.sport = s; push() })
+	f.AddInputField("dport", ff.dport, 10, nil, func(s string) { ff.dport = s; push() })
 
 	for i, label := range ctStateLabels {
 		idx := i
-		f.AddCheckbox("ct "+label, false, func(checked bool) {
+		initial := ff.ctStates[i]
+		f.AddCheckbox("ct "+label, initial, func(checked bool) {
 			ff.ctStates[idx] = checked
 			push()
 		})
 	}
 
-	f.AddCheckbox("counter", false, func(c bool) { ff.counter = c; push() })
-	f.AddCheckbox("log", false, func(c bool) { ff.log = c; push() })
-	f.AddInputField("log prefix", "", 24, nil, func(s string) { ff.logPref = s; push() })
+	f.AddCheckbox("counter", ff.counter, func(c bool) { ff.counter = c; push() })
+	f.AddCheckbox("log", ff.log, func(c bool) { ff.log = c; push() })
+	f.AddInputField("log prefix", ff.logPref, 24, nil, func(s string) { ff.logPref = s; push() })
 
 	verdicts := []string{"", "accept", "drop", "reject", "return"}
-	f.AddDropDown("verdict", verdicts, 0, func(opt string, _ int) {
+	f.AddDropDown("verdict", verdicts, indexOf(verdicts, ff.verdict, 0), func(opt string, _ int) {
 		ff.verdict = opt
 		push()
 	})
 
 	return f
+}
+
+// indexOf returns the position of want in opts, or fallback if not
+// present. Used to map prefilled field values back to tview.Form
+// dropdown indices.
+func indexOf(opts []string, want string, fallback int) int {
+	for i, o := range opts {
+		if o == want {
+			return i
+		}
+	}
+	return fallback
 }
 
 // resetForm clears all form fields back to their zero values, called
