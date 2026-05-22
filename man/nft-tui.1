@@ -120,6 +120,28 @@ snapshots the live ruleset to
 .I path
 restores from a snapshot (with a 60-second dead-man's switch).
 
+Inside the
+.B :
+modal,
+.B Up
+/
+.B Down
+recall the previous and next history entries (capped at 100 per
+session, ring-buffered, blank-input filtered). For
+.B :w
+and
+.B :r
+commands,
+.B Tab
+completes the argument as a filesystem path —
+.RB ~/
+expands to
+.BR $HOME ,
+multiple matches advance to the longest common prefix, and a unique
+directory match gains a trailing slash so the next
+.B Tab
+can descend into it.
+
 .SS Yank and reload
 .TP
 .B y

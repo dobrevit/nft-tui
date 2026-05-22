@@ -9,6 +9,75 @@ import (
 	"time"
 )
 
+// commonPrefixOfStrings returns the longest leading substring shared
+// by every entry. Returns "" for an empty slice. Extracted so the
+// tab-completion logic has a deterministic unit-testable core
+// without OS round-trips.
+func commonPrefixOfStrings(ss []string) string {
+	if len(ss) == 0 {
+		return ""
+	}
+	p := ss[0]
+	for _, s := range ss[1:] {
+		n := 0
+		for n < len(p) && n < len(s) && p[n] == s[n] {
+			n++
+		}
+		p = p[:n]
+	}
+	return p
+}
+
+// completeCommandPath implements Tab inside the `:` modal for the
+// w/write/r/read/restore verbs. The substring after the last
+// whitespace in the input is treated as the path prefix; we glob
+// the filesystem for matches and (a) for one match, replace with
+// the full path (with a trailing slash if it's a directory), (b)
+// for several, advance to the longest common prefix, (c) for none,
+// leave the input alone.
+//
+// Non-w/r inputs (search queries) pass through; the existing
+// SetInputCapture returns the event so tview's default Tab handling
+// runs.
+func (e *Explorer) completeCommandPath() bool {
+	raw := e.searchInput.GetText()
+	cmd := parseCommand(raw)
+	if cmd.kind != cmdWrite && cmd.kind != cmdRead {
+		return false
+	}
+
+	// Find the last whitespace; everything after = the arg-in-progress.
+	// (`raw` from parseCommand is the original; cmd.arg is already
+	// trimmed, which loses the trailing-space distinction.)
+	i := strings.LastIndexAny(raw, " \t")
+	if i < 0 {
+		return false // verb without separator — nothing to complete
+	}
+	verbPart := raw[:i+1]
+	arg := raw[i+1:]
+
+	expanded := expandTilde(arg)
+	matches, err := filepath.Glob(expanded + "*")
+	if err != nil || len(matches) == 0 {
+		return true // we handled it (no-op), don't fall through to tview
+	}
+
+	completion := matches[0]
+	if len(matches) > 1 {
+		completion = commonPrefixOfStrings(matches)
+		if completion == expanded {
+			return true // already at the common prefix; no progress
+		}
+	} else if info, statErr := os.Stat(matches[0]); statErr == nil && info.IsDir() {
+		// One unique match that's a directory — add the slash so the
+		// next Tab can complete inside it.
+		completion += "/"
+	}
+
+	e.searchInput.SetText(verbPart + completion)
+	return true
+}
+
 // cmdKind identifies the action a `:`-typed string maps to.
 type cmdKind int
 

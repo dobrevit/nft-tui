@@ -144,9 +144,9 @@ func (e *Explorer) buildSearchPage() tview.Primitive {
 		}
 		e.refreshSearchResults(text)
 	})
-	// Up / Down arrow inside the input recall history. Captured here
-	// because tview's InputField does not expose those as DoneFunc
-	// keys — they're routed through SetInputCapture instead.
+	// Up / Down for history recall; Tab for filesystem-path
+	// completion when the input is a :w / :r command. Other keys
+	// (incl. plain Tab on a search query) pass through to tview.
 	e.searchInput.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 		switch ev.Key() {
 		case tcell.KeyUp:
@@ -155,6 +155,10 @@ func (e *Explorer) buildSearchPage() tview.Primitive {
 		case tcell.KeyDown:
 			e.recallNextCommand()
 			return nil
+		case tcell.KeyTab:
+			if e.completeCommandPath() {
+				return nil
+			}
 		}
 		return ev
 	})
