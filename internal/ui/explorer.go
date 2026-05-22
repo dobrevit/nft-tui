@@ -79,6 +79,10 @@ type Explorer struct {
 	monitorSort   sortMetric
 	monitorPaused bool
 
+	// Restore / dead-man's switch state.
+	deadmanView *tview.TextView
+	deadman     *deadmanState
+
 	// sparkBuffers is the per-rule ring buffer of pps samples used by
 	// the monitor sparkline. Keyed by ruleKey; trimmed to sparkSamples
 	// on every push. Entries for rules that disappear are pruned in
@@ -362,7 +366,8 @@ func (e *Explorer) build() {
 		AddPage("help", e.buildHelpPage(), true, false).
 		AddPage("editor", e.buildEditorPage(), true, false).
 		AddPage("diff", e.buildDiffPage(), true, false).
-		AddPage("monitor", e.buildMonitorPage(), true, false)
+		AddPage("monitor", e.buildMonitorPage(), true, false).
+		AddPage("deadman", e.buildDeadmanPage(), true, false)
 
 	e.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.pages, 0, 1, true)
 	e.root.SetInputCapture(e.handleKey)

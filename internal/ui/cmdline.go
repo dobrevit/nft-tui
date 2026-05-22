@@ -113,14 +113,13 @@ func (e *Explorer) runSnapshotCommand(path string) {
 	e.setStatus(fmt.Sprintf("[green]snapshot written to %s[-]", target))
 }
 
-// runRestoreCommand is a placeholder until Phase 5.2 wires the
-// dead-man's switch. Refuses to apply the restore here because doing
-// so without the rollback timer is the exact footgun the safety
-// design avoids.
+// runRestoreCommand routes `:r <path>` into the dead-man's switch
+// overlay (deadman.go). The overlay handles the apply, the rollback
+// snapshot, the 60-second countdown, and the auto-rollback.
 func (e *Explorer) runRestoreCommand(path string) {
 	if path == "" {
 		e.setStatus("[yellow]:r needs a path, e.g. `:r ~/snap.nft`[-]")
 		return
 	}
-	e.setStatus("[yellow]:r will land in Phase 5.2 (dead-man's switch in progress)[-]")
+	e.requestRestore(expandTilde(path))
 }
