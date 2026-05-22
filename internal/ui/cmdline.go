@@ -81,6 +81,60 @@ func expandTilde(p string) string {
 	return p
 }
 
+// cmdHistoryMax caps how many entries we retain. ~100 covers a single
+// long session; older entries roll off the front.
+const cmdHistoryMax = 100
+
+// pushCmdHistory appends s to the recall buffer. Strips whitespace
+// duplicates against the most-recent entry — repeatedly running the
+// same `:` query shouldn't fill the buffer with one repeated string.
+func (e *Explorer) pushCmdHistory(s string) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return
+	}
+	if n := len(e.cmdHistory); n > 0 && e.cmdHistory[n-1] == s {
+		e.cmdHistIdx = -1
+		return
+	}
+	e.cmdHistory = append(e.cmdHistory, s)
+	if len(e.cmdHistory) > cmdHistoryMax {
+		e.cmdHistory = e.cmdHistory[len(e.cmdHistory)-cmdHistoryMax:]
+	}
+	e.cmdHistIdx = -1
+}
+
+// recallPrevCommand moves backwards through the history. The first Up
+// from a fresh modal jumps to the most-recent entry; subsequent Ups
+// walk further back.
+func (e *Explorer) recallPrevCommand() {
+	if len(e.cmdHistory) == 0 {
+		return
+	}
+	switch {
+	case e.cmdHistIdx == -1:
+		e.cmdHistIdx = len(e.cmdHistory) - 1
+	case e.cmdHistIdx > 0:
+		e.cmdHistIdx--
+	}
+	e.searchInput.SetText(e.cmdHistory[e.cmdHistIdx])
+}
+
+// recallNextCommand moves forwards through the history. Past the most-
+// recent entry, the input clears (matching readline / shell behaviour).
+func (e *Explorer) recallNextCommand() {
+	if len(e.cmdHistory) == 0 || e.cmdHistIdx == -1 {
+		return
+	}
+	e.cmdHistIdx++
+	if e.cmdHistIdx >= len(e.cmdHistory) {
+		e.cmdHistIdx = -1
+		e.searchInput.SetText("")
+		return
+	}
+	e.searchInput.SetText(e.cmdHistory[e.cmdHistIdx])
+}
+
 // runCommand dispatches a parsed command to its handler. cmdSearch is a
 // no-op here — the caller handles search via the existing path.
 func (e *Explorer) runCommand(c command) {

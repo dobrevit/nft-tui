@@ -43,6 +43,11 @@ type Explorer struct {
 	// Search overlay (`:` modal).
 	searchInput   *tview.InputField
 	searchResults *tview.List
+	// cmdHistory is the `:` recall buffer (Up/Down arrow inside the
+	// modal). cmdHistIdx is -1 when not currently browsing the
+	// history; 0..len-1 marks the position.
+	cmdHistory []string
+	cmdHistIdx int
 
 	// nodeByChain maps a chain into the TreeView so jumpToChain can find
 	// the corresponding node. Refreshed on every refreshTree call.
@@ -580,6 +585,7 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 	case ':':
 		e.searchInput.SetText("")
 		e.searchResults.Clear()
+		e.cmdHistIdx = -1 // start a fresh recall session
 		e.pages.ShowPage("search")
 		e.app.SetFocus(e.searchInput)
 		return nil

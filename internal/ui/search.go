@@ -144,15 +144,31 @@ func (e *Explorer) buildSearchPage() tview.Primitive {
 		}
 		e.refreshSearchResults(text)
 	})
+	// Up / Down arrow inside the input recall history. Captured here
+	// because tview's InputField does not expose those as DoneFunc
+	// keys — they're routed through SetInputCapture instead.
+	e.searchInput.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		switch ev.Key() {
+		case tcell.KeyUp:
+			e.recallPrevCommand()
+			return nil
+		case tcell.KeyDown:
+			e.recallNextCommand()
+			return nil
+		}
+		return ev
+	})
 	e.searchInput.SetDoneFunc(func(key tcell.Key) {
 		switch key {
 		case tcell.KeyEscape:
 			e.pages.HidePage("search")
 			e.app.SetFocus(e.tree)
 		case tcell.KeyEnter:
+			text := e.searchInput.GetText()
+			e.pushCmdHistory(text)
 			// If the input is a recognised command, execute and close.
 			// Otherwise it's a query — move focus into the results list.
-			c := parseCommand(e.searchInput.GetText())
+			c := parseCommand(text)
 			if c.kind != cmdSearch {
 				e.pages.HidePage("search")
 				e.app.SetFocus(e.tree)
