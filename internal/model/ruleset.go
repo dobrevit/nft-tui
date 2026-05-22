@@ -6,7 +6,11 @@
 // pre-rendered nft-syntax string for display.
 package model
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 type Family string
 
@@ -72,6 +76,32 @@ type Rule struct {
 	Verdict string // "accept" | "drop" | "reject" | "jump X" | ...
 
 	Counter Counter
+
+	// SearchKey is a precomputed lower-cased concatenation of every field
+	// the filter looks at. Built once at read time (call RebuildSearchKey
+	// after constructing a Rule) so per-keystroke substring filtering is
+	// allocation-free. Not for display.
+	SearchKey string `json:"-"`
+}
+
+// RebuildSearchKey recomputes r.SearchKey from r's current field values.
+// Call after constructing or modifying a Rule so the filter / search
+// path sees fresh content.
+func (r *Rule) RebuildSearchKey() {
+	var b strings.Builder
+	b.Grow(len(r.NFT) + 64)
+	fmt.Fprintf(&b, "%d", r.Handle)
+	for _, s := range [...]string{
+		r.NFT, r.Comment,
+		r.IIfName, r.OIfName,
+		r.SAddr, r.DAddr,
+		r.SPort, r.DPort,
+		r.Proto, r.CTState, r.Verdict,
+	} {
+		b.WriteByte(0)
+		b.WriteString(s)
+	}
+	r.SearchKey = strings.ToLower(b.String())
 }
 
 type Counter struct {

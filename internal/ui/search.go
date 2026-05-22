@@ -11,28 +11,30 @@ import (
 )
 
 // ruleMatches reports whether a rule contains query as a case-insensitive
-// substring in any human-relevant field (handle, comment, decoded
-// interfaces/addresses/ports, or the rendered nft text). Empty query
-// matches everything.
+// substring in any human-relevant field. Empty query matches everything.
+//
+// Reads from r.SearchKey, a lower-cased haystack precomputed at read time;
+// the per-call cost is one ToLower of the (short) query plus a single
+// strings.Contains. Falls back to a slow path if SearchKey wasn't built
+// (synthetic rules in tests).
 func ruleMatches(r *model.Rule, query string) bool {
 	if query == "" {
 		return true
 	}
 	q := strings.ToLower(query)
-	haystacks := []string{
-		fmt.Sprintf("%d", r.Handle),
-		strings.ToLower(r.NFT),
-		strings.ToLower(r.Comment),
-		strings.ToLower(r.IIfName),
-		strings.ToLower(r.OIfName),
-		strings.ToLower(r.SAddr),
-		strings.ToLower(r.DAddr),
-		strings.ToLower(r.DPort),
-		strings.ToLower(r.SPort),
-		strings.ToLower(r.Verdict),
+	if r.SearchKey != "" {
+		return strings.Contains(r.SearchKey, q)
 	}
-	for _, h := range haystacks {
-		if strings.Contains(h, q) {
+	// Slow fallback for rules without a precomputed key.
+	for _, h := range [...]string{
+		fmt.Sprintf("%d", r.Handle),
+		r.NFT, r.Comment,
+		r.IIfName, r.OIfName,
+		r.SAddr, r.DAddr,
+		r.SPort, r.DPort,
+		r.Verdict,
+	} {
+		if strings.Contains(strings.ToLower(h), q) {
 			return true
 		}
 	}

@@ -219,6 +219,7 @@ func convertRule(r *nftables.Rule, ch *model.Chain, sets map[string]*model.Set) 
 		// nft's textual form puts the comment at the end of the rule.
 		mr.NFT = mr.NFT + ` comment "` + c + `"`
 	}
+	mr.RebuildSearchKey()
 	return mr
 }
 
