@@ -319,7 +319,7 @@ func (r *ruleRenderer) handleLookup(x *expr.Lookup) {
 			// The map's value supplies the rule's verdict; surface
 			// that in the decoded Verdict field for the columnar
 			// view, lacking a more specific signal.
-			r.out.Verdict = "vmap " + x.SetName
+			r.out.Verdict = "vmap " + sanitiseToken(x.SetName)
 		}
 	default:
 		r.emitMatch(fmt.Sprintf("%s %s", label, setRef))
@@ -345,7 +345,7 @@ func (r *ruleRenderer) lookupLabel(srcReg uint32) string {
 // lookupRefAndOp returns the verb (`vmap` / `map` / `""`) and the
 // set/map reference (either `@name` or an inlined `{ … }` literal).
 func (r *ruleRenderer) lookupRefAndOp(x *expr.Lookup) (op, setRef string) {
-	setRef = "@" + x.SetName
+	setRef = "@" + sanitiseToken(x.SetName)
 	s, found := r.sets[x.SetName]
 	if !found {
 		return "", setRef
@@ -506,9 +506,10 @@ func formatCmpData(info regInfo, data []byte) string {
 			return fmt.Sprintf("%d", binary.BigEndian.Uint16(data))
 		}
 	case kindMetaIIFName, kindMetaOIFName:
-		// NUL-padded IFNAMSIZ buffer.
-		s := strings.TrimRight(string(data), "\x00")
-		return `"` + s + `"`
+		// NUL-padded IFNAMSIZ buffer. sanitiseToken also strips any
+		// embedded control characters so we never produce a quoted
+		// string with a NUL or newline inside.
+		return `"` + sanitiseToken(strings.TrimRight(string(data), "\x00")) + `"`
 	case kindMetaL4Proto, "ip-protocol", "ip6-nexthdr":
 		if len(data) == 1 {
 			return l4protoName(data[0])
@@ -604,6 +605,31 @@ func allZero(data []byte) bool {
 	return true
 }
 
+// sanitiseToken keeps only printable ASCII characters (excluding the
+// nft-syntax meta-characters `"` and `\`) from a kernel-supplied
+// identifier. Used wherever the renderer embeds a kernel string
+// (chain name, set name, log prefix, interface name) into the
+// rendered nft text — a NUL or newline in any of those would either
+// produce ungrep-able output or be misread by anyone pasting the
+// rendered rule into a config-management repo.
+//
+// Returns "<empty>" if nothing survives sanitisation, so the
+// operator sees that something was stripped rather than getting an
+// empty space in the output.
+func sanitiseToken(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r >= 0x20 && r < 0x7f && r != '"' && r != '\\' {
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() == 0 {
+		return "<empty>"
+	}
+	return b.String()
+}
+
 // isAnonymousSet recognises the names the kernel auto-assigns to anonymous
 // sets/maps generated from inline literals like `{ 22, 80, 443 }`.
 func isAnonymousSet(name string) bool {
@@ -686,9 +712,9 @@ func renderVerdict(v *expr.Verdict) string {
 	case expr.VerdictReturn:
 		return "return"
 	case expr.VerdictJump:
-		return "jump " + v.Chain
+		return "jump " + sanitiseToken(v.Chain)
 	case expr.VerdictGoto:
-		return "goto " + v.Chain
+		return "goto " + sanitiseToken(v.Chain)
 	case expr.VerdictContinue:
 		return "continue"
 	case expr.VerdictQueue:
@@ -703,7 +729,10 @@ func renderLog(l *expr.Log) string {
 	var b strings.Builder
 	b.WriteString("log")
 	if len(l.Data) > 0 {
-		prefix := strings.TrimRight(string(l.Data), "\x00")
+		// Sanitise — l.Data is raw kernel bytes; embedding NUL or
+		// quote characters into the rendered nft text would break
+		// `nft -f` if the operator pastes it back.
+		prefix := sanitiseToken(string(l.Data))
 		fmt.Fprintf(&b, ` prefix "%s"`, prefix)
 	}
 	return b.String()
