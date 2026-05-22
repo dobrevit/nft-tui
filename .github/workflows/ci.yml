@@ -1,8 +1,8 @@
 # CI — runs on every PR and every push to main.
 #
 # Three jobs: lint (gofmt + vet), unit tests, and a real-kernel
-# integration test inside an unshared user/net namespace so we touch
-# nft for real on every change.
+# integration test against the runner's own nftables (touches root,
+# but the runner is throwaway).
 
 name: ci
 
@@ -28,9 +28,8 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: gofmt
-        # `gofmt -l .` only checks the top-level directory, not the
-        # subtree — easy to miss. List every .go file under the repo
-        # explicitly so subpackage drift is caught.
+        # gofmt -l . only checks the top-level directory; enumerate
+        # every .go file so subpackage drift is caught.
         run: |
           files=$(gofmt -l $(find . -name '*.go' -not -path './.git/*'))
           if [ -n "$files" ]; then
@@ -69,9 +68,13 @@ jobs:
           sudo apt-get install -y nftables
       - name: build integration test binary
         run: go test -tags=integration -c -o nft-integration ./internal/nft
-      - name: run inside unshared netns
-        # GitHub-hosted runners have unprivileged user namespaces
-        # enabled by default; unshare -rn gives us a CAP_NET_ADMIN
-        # netns with no real privilege escalation. The integration
-        # tests mutate the kernel ruleset of THIS netns only.
-        run: unshare -rn ./nft-integration -test.v -test.run=Integration -test.timeout=60s
+      - name: run as root (GHA runners restrict unshare -rn)
+        # GitHub-hosted runners block unprivileged user-namespace
+        # remapping (`unshare -rn` fails writing /proc/self/uid_map)
+        # via an AppArmor profile. Running as root works because the
+        # runner VM is throwaway — the only ruleset we could disrupt
+        # is on a machine that's destroyed within minutes.
+        #
+        # Locally, `make integration` still uses `unshare -rn` so
+        # contributors don't need root on their workstations.
+        run: sudo ./nft-integration -test.v -test.run=Integration -test.timeout=60s
