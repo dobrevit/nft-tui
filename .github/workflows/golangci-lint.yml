@@ -4,17 +4,15 @@
 # matching the binary version with the config-file schema and caches
 # the analysis between runs.
 #
-# Version pinning: golangci-lint v2 uses a different config schema
-# from v1, and the v1.64.8 binary the action installs by default is
-# also built with Go 1.24 — older than our pinned toolchain
-# (toolchain go1.26.2 in go.mod), so it refuses to load with:
+# Action / lint version compatibility matrix (the painful one):
 #
-#   the Go language version (go1.24) used to build golangci-lint is
-#   lower than the targeted Go version (1.26.2)
+#   golangci-lint-action@v6  →  golangci-lint v1 only
+#   golangci-lint-action@v7+ →  golangci-lint v2 (refuses v1 pins)
 #
-# Pin v2.12.x explicitly — built with Go 1.26 and reads our v2
-# config. Matches what local contributors install via
-# `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`.
+# Our .golangci.yml is v2 schema (v2.12.x is the line built with
+# Go 1.26 — matches our `toolchain go1.26.2` pin in go.mod), so we
+# need action v7+ AND a v2.x version. The combination v6 + v2 or
+# v7 + v1 both fail at startup.
 
 name: golangci-lint
 
@@ -39,7 +37,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
           args: --timeout=5m

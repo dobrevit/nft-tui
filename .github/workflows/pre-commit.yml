@@ -40,9 +40,9 @@ jobs:
       - name: Install golangci-lint
         # The local pre-commit hook references golangci-lint with
         # language: system, so it must be on PATH in CI too.
-        # Pinned to v2.12.x — see comments in golangci-lint.yml for
-        # why the default v1 binary doesn't work with our toolchain.
-        uses: golangci/golangci-lint-action@v6
+        # Action v7+ is required for v2 lint binaries — see
+        # golangci-lint.yml for the compatibility matrix.
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
           install-mode: binary
