@@ -100,10 +100,15 @@ type SetFlags struct {
 }
 
 type SetElement struct {
-	Key     string
-	Expires time.Time
-	Counter Counter
-	Comment string
+	Key string
+	// IntervalEnd is true when this element is the sentinel upper bound of
+	// an interval-set entry (the lower bound is the previous element).
+	IntervalEnd bool
+	// TimeoutLeft is the remaining lifetime of a dynamic-set element; zero
+	// if the set has no timeout or the element is permanent.
+	TimeoutLeft time.Duration
+	Counter     Counter
+	Comment     string
 }
 
 type FlowTable struct {

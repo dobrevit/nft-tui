@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -246,8 +247,53 @@ func (e *Explorer) showSet(s *model.Set) {
 	if s.Flags.Timeout {
 		fmt.Fprintf(&b, "timeout:   %s\n", s.Timeout)
 	}
-	fmt.Fprintf(&b, "\n[gray]Element listing is not implemented in Phase 2.[-]\n")
+	fmt.Fprintf(&b, "elements:  %d\n\n", len(s.Elements))
+
+	// Pair up interval-end sentinels for display.
+	var pending string
+	count := 0
+	for _, el := range s.Elements {
+		if el.IntervalEnd {
+			if pending != "" {
+				writeSetElement(&b, pending+"-"+el.Key, 0, "")
+				pending = ""
+			}
+			continue
+		}
+		if pending != "" {
+			writeSetElement(&b, pending, 0, "")
+			count++
+			if count >= 200 {
+				fmt.Fprintf(&b, "  [gray]… %d more elided[-]\n", len(s.Elements)-count)
+				return
+			}
+		}
+		pending = el.Key
+		// Carry timeout/comment forward to the actual emit, in case the
+		// next element is a sentinel.
+		writeSetElement(&b, el.Key, el.TimeoutLeft, el.Comment)
+		pending = ""
+		count++
+		if count >= 200 {
+			fmt.Fprintf(&b, "  [gray]… %d more elided[-]\n", len(s.Elements)-count)
+			return
+		}
+	}
+	if pending != "" {
+		writeSetElement(&b, pending, 0, "")
+	}
 	e.info.SetText(b.String())
+}
+
+func writeSetElement(b *strings.Builder, key string, timeoutLeft time.Duration, comment string) {
+	fmt.Fprintf(b, "  %s", key)
+	if timeoutLeft > 0 {
+		fmt.Fprintf(b, "   [gray]expires in %s[-]", timeoutLeft.Round(time.Second))
+	}
+	if comment != "" {
+		fmt.Fprintf(b, "   [yellow]# %s[-]", comment)
+	}
+	b.WriteByte('\n')
 }
 
 func (e *Explorer) setStatus(s string) {

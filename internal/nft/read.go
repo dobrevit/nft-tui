@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/nftables"
+	"github.com/google/nftables/userdata"
 
 	"github.com/dobrevit/nft-tui/internal/model"
 )
@@ -38,8 +39,8 @@ func (c *Conn) Close() error {
 }
 
 // ListRuleset fetches the entire ruleset (all families, all tables) and
-// renders rules into our model. One netlink round-trip per logical query
-// (tables, chains-per-table, rules-per-chain, sets-per-table).
+// renders rules into our model. Set elements are fetched eagerly so the
+// renderer can inline anonymous sets (`__set%d`) into the rule text.
 func (c *Conn) ListRuleset() (*model.Ruleset, error) {
 	if c == nil || c.c == nil {
 		return nil, errors.New("nft.Conn is nil")
@@ -62,40 +63,10 @@ func (c *Conn) ListRuleset() (*model.Ruleset, error) {
 			return nil, fmt.Errorf("list tables (family=%s): %w", familyName(fam), err)
 		}
 		for _, t := range tables {
-			mt := &model.Table{
-				Family: model.Family(familyName(fam)),
-				Name:   t.Name,
-			}
-
-			chains, err := c.c.ListChainsOfTableFamily(fam)
+			mt, err := c.readTable(t, fam)
 			if err != nil {
-				return nil, fmt.Errorf("list chains (family=%s): %w", familyName(fam), err)
+				return nil, err
 			}
-			for _, ch := range chains {
-				if ch.Table.Name != t.Name {
-					continue
-				}
-				mc := convertChain(ch, mt)
-				rules, err := c.c.GetRules(t, ch)
-				if err != nil {
-					return nil, fmt.Errorf("list rules (%s/%s/%s): %w",
-						familyName(fam), t.Name, ch.Name, err)
-				}
-				for _, r := range rules {
-					mc.Rules = append(mc.Rules, convertRule(r, mc))
-				}
-				mt.Chains = append(mt.Chains, mc)
-			}
-
-			sets, err := c.c.GetSets(t)
-			if err != nil {
-				return nil, fmt.Errorf("list sets (%s/%s): %w",
-					familyName(fam), t.Name, err)
-			}
-			for _, s := range sets {
-				mt.Sets = append(mt.Sets, convertSet(s, mt))
-			}
-
 			rs.Tables = append(rs.Tables, mt)
 		}
 	}
@@ -108,6 +79,81 @@ func (c *Conn) ListRuleset() (*model.Ruleset, error) {
 	})
 
 	return rs, nil
+}
+
+// readTable fetches one table's sets (with elements) and chains (with rules).
+// Sets are fetched first so the rule renderer can resolve anonymous-set
+// lookups against their element lists.
+func (c *Conn) readTable(t *nftables.Table, fam nftables.TableFamily) (*model.Table, error) {
+	mt := &model.Table{
+		Family: model.Family(familyName(fam)),
+		Name:   t.Name,
+	}
+
+	sets, err := c.c.GetSets(t)
+	if err != nil {
+		return nil, fmt.Errorf("list sets (%s/%s): %w", mt.Family, t.Name, err)
+	}
+	setIndex := make(map[string]*model.Set, len(sets))
+	for _, s := range sets {
+		ms, err := c.readSet(s, mt)
+		if err != nil {
+			return nil, err
+		}
+		mt.Sets = append(mt.Sets, ms)
+		setIndex[s.Name] = ms
+	}
+
+	chains, err := c.c.ListChainsOfTableFamily(fam)
+	if err != nil {
+		return nil, fmt.Errorf("list chains (%s): %w", mt.Family, err)
+	}
+	for _, ch := range chains {
+		if ch.Table.Name != t.Name {
+			continue
+		}
+		mc := convertChain(ch, mt)
+		rules, err := c.c.GetRules(t, ch)
+		if err != nil {
+			return nil, fmt.Errorf("list rules (%s/%s/%s): %w",
+				mt.Family, t.Name, ch.Name, err)
+		}
+		for _, r := range rules {
+			mc.Rules = append(mc.Rules, convertRule(r, mc, setIndex))
+		}
+		mt.Chains = append(mt.Chains, mc)
+	}
+
+	return mt, nil
+}
+
+// readSet fetches a set's metadata and elements.
+func (c *Conn) readSet(s *nftables.Set, t *model.Table) (*model.Set, error) {
+	ms := &model.Set{
+		Table:   t,
+		Name:    s.Name,
+		KeyType: s.KeyType.Name,
+		Flags: model.SetFlags{
+			Constant: s.Constant,
+			Dynamic:  s.Dynamic,
+			Interval: s.Interval,
+			Counter:  s.Counter,
+			Timeout:  s.HasTimeout,
+		},
+		Timeout: s.Timeout,
+	}
+	els, err := c.c.GetSetElements(s)
+	if err != nil {
+		// A set may legitimately have no elements; only surface real errors.
+		return nil, fmt.Errorf("list set elements (%s/%s/%s): %w",
+			t.Family, t.Name, s.Name, err)
+	}
+	ms.Elements = make([]model.SetElement, 0, len(els))
+	for _, e := range els {
+		ms.Elements = append(ms.Elements, convertSetElement(s.KeyType.Name, e))
+	}
+	ms.Size = len(ms.Elements)
+	return ms, nil
 }
 
 func convertChain(c *nftables.Chain, t *model.Table) *model.Chain {
@@ -135,8 +181,8 @@ func convertChain(c *nftables.Chain, t *model.Table) *model.Chain {
 	return mc
 }
 
-func convertRule(r *nftables.Rule, ch *model.Chain) *model.Rule {
-	rendered := RenderRule(r)
+func convertRule(r *nftables.Rule, ch *model.Chain, sets map[string]*model.Set) *model.Rule {
+	rendered := RenderRule(r, sets)
 	mr := &model.Rule{
 		Chain:   ch,
 		Handle:  r.Handle,
@@ -158,29 +204,12 @@ func convertRule(r *nftables.Rule, ch *model.Chain) *model.Rule {
 			Present: true,
 		}
 	}
-	if len(r.UserData) > 0 {
-		// google/nftables exposes UserData as a TLV; the comment is encoded
-		// there. Decoding is best-effort — empty string if absent.
-		mr.Comment = decodeComment(r.UserData)
+	if c, ok := userdata.GetString(r.UserData, userdata.TypeComment); ok && c != "" {
+		mr.Comment = c
+		// nft's textual form puts the comment at the end of the rule.
+		mr.NFT = mr.NFT + ` comment "` + c + `"`
 	}
 	return mr
-}
-
-func convertSet(s *nftables.Set, t *model.Table) *model.Set {
-	ms := &model.Set{
-		Table:   t,
-		Name:    s.Name,
-		KeyType: s.KeyType.Name,
-		Flags: model.SetFlags{
-			Constant: s.Constant,
-			Dynamic:  s.Dynamic,
-			Interval: s.Interval,
-			Counter:  s.Counter,
-			Timeout:  s.HasTimeout,
-		},
-		Timeout: s.Timeout,
-	}
-	return ms
 }
 
 // hookName converts a kernel hook number to its nft name.
@@ -220,30 +249,4 @@ func familyName(f nftables.TableFamily) string {
 		return "netdev"
 	}
 	return fmt.Sprintf("family<%d>", f)
-}
-
-// decodeComment walks a TLV-encoded user-data blob and returns the comment
-// attribute (NFTNL_UDATA_RULE_COMMENT = 0). Returns "" if not present or if
-// the encoding looks malformed.
-func decodeComment(ud []byte) string {
-	for i := 0; i+2 <= len(ud); {
-		typ := ud[i]
-		length := int(ud[i+1])
-		if i+2+length > len(ud) {
-			return ""
-		}
-		val := ud[i+2 : i+2+length]
-		if typ == 0 { // NFTNL_UDATA_RULE_COMMENT
-			s := string(val)
-			// kernel zero-terminates the string
-			for j := 0; j < len(s); j++ {
-				if s[j] == 0 {
-					return s[:j]
-				}
-			}
-			return s
-		}
-		i += 2 + length
-	}
-	return ""
 }

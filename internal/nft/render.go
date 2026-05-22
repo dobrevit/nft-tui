@@ -20,6 +20,8 @@ import (
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
+
+	"github.com/dobrevit/nft-tui/internal/model"
 )
 
 // RuleRendering is the output of rendering one rule.
@@ -68,7 +70,11 @@ type regInfo struct {
 // RenderRule walks the expression list and produces an nft-text statement
 // plus decoded fields. It never returns an error: anything it cannot decode
 // is surfaced as a `<expr:...>` token in the rendered text.
-func RenderRule(r *nftables.Rule) RuleRendering {
+//
+// sets is the per-table set index; used to inline anonymous-set lookups
+// (`@__set0`) as `{ a, b, c }`. Pass a nil or empty map if no inlining is
+// desired.
+func RenderRule(r *nftables.Rule, sets map[string]*model.Set) RuleRendering {
 	var (
 		out  RuleRendering
 		regs = map[uint32]regInfo{}
@@ -84,23 +90,36 @@ func RenderRule(r *nftables.Rule) RuleRendering {
 	// label tcp/udp ports correctly.
 	transport := ""
 
+	// nfproto guard elision. nft normally hides the implicit `meta nfproto
+	// ipv4` (or ipv6) guard that the kernel inserts before an ip-family
+	// payload match in an inet table. We defer emitting the guard and drop
+	// it if the very next match is the matching ip-family payload.
+	var pendingNFProto, pendingNFProtoFam string
+
+	emitMatch := func(text string) {
+		if pendingNFProto != "" {
+			elide := (pendingNFProtoFam == "ipv4" && strings.HasPrefix(text, "ip ")) ||
+				(pendingNFProtoFam == "ipv6" && strings.HasPrefix(text, "ip6 "))
+			if !elide {
+				matches = append(matches, pendingNFProto)
+			}
+			pendingNFProto = ""
+			pendingNFProtoFam = ""
+		}
+		matches = append(matches, text)
+	}
+
 	for _, e := range r.Exprs {
 		switch x := e.(type) {
 
 		case *expr.Meta:
-			info := metaKeyInfo(x.Key)
-			regs[x.Register] = info
-			if info.kind == "meta-l4proto" {
-				// nothing to emit yet; the cmp will do it
-			}
+			regs[x.Register] = metaKeyInfo(x.Key)
 
 		case *expr.Payload:
-			info := payloadInfo(x.Base, x.Offset, x.Len)
-			regs[x.DestRegister] = info
+			regs[x.DestRegister] = payloadInfo(x.Base, x.Offset, x.Len)
 
 		case *expr.Ct:
-			info := ctKeyInfo(x.Key)
-			regs[x.Register] = info
+			regs[x.Register] = ctKeyInfo(x.Key)
 
 		case *expr.Bitwise:
 			// Bitwise is typically used to mask a previously-loaded value
@@ -115,18 +134,33 @@ func RenderRule(r *nftables.Rule) RuleRendering {
 		case *expr.Cmp:
 			info, ok := regs[x.Register]
 			if !ok {
-				matches = append(matches, fmt.Sprintf("<expr:cmp reg=%d>", x.Register))
+				emitMatch(fmt.Sprintf("<expr:cmp reg=%d>", x.Register))
 				continue
 			}
 
-			// Special pattern: `ct state <names>` is emitted by the kernel
-			// as `ct state` → bitwise(AND mask) → cmp(neq, 0). The mask
-			// itself encodes which states are being matched.
+			// `ct state <names>` is emitted by the kernel as ct-state load
+			// → bitwise(AND mask) → cmp(neq, 0). The mask encodes the set
+			// of states matched.
 			if info.kind == "ct-state" && info.mask != nil &&
 				x.Op == expr.CmpOpNeq && allZero(x.Data) {
 				names := formatCTState(binary.LittleEndian.Uint32(info.mask))
 				out.CTState = names
-				matches = append(matches, "ct state "+names)
+				emitMatch("ct state " + names)
+				continue
+			}
+
+			// L4 proto cmp sets the transport context for subsequent port
+			// loads; nft elides this entirely in its output.
+			if info.kind == "meta-l4proto" && x.Op == expr.CmpOpEq && len(x.Data) == 1 {
+				transport = l4protoName(x.Data[0])
+				continue
+			}
+
+			// nfproto guard: defer, elide if the next match is matching
+			// ip-family payload.
+			if info.kind == "meta-nfproto" && x.Op == expr.CmpOpEq && len(x.Data) == 1 {
+				pendingNFProtoFam = nfprotoName(x.Data[0])
+				pendingNFProto = "meta nfproto " + pendingNFProtoFam
 				continue
 			}
 
@@ -134,13 +168,7 @@ func RenderRule(r *nftables.Rule) RuleRendering {
 			rhs := formatCmpData(info, x.Data)
 			op := cmpOp(x.Op)
 
-			// L4 proto cmp sets transport context for subsequent port loads.
-			if info.kind == "meta-l4proto" && op == "" && len(x.Data) == 1 {
-				transport = l4protoName(x.Data[0])
-				continue
-			}
-
-			// Capture decoded fields into the rendering result.
+			// Capture decoded fields for the columnar view.
 			switch info.kind {
 			case "ip-saddr", "ip6-saddr", "ip-daddr", "ip6-daddr":
 				captureAddr(&out, info.kind, rhs)
@@ -165,9 +193,9 @@ func RenderRule(r *nftables.Rule) RuleRendering {
 			}
 
 			if op == "" {
-				matches = append(matches, fmt.Sprintf("%s %s", lhs, rhs))
+				emitMatch(fmt.Sprintf("%s %s", lhs, rhs))
 			} else {
-				matches = append(matches, fmt.Sprintf("%s %s %s", lhs, op, rhs))
+				emitMatch(fmt.Sprintf("%s %s %s", lhs, op, rhs))
 			}
 
 		case *expr.Lookup:
@@ -182,17 +210,21 @@ func RenderRule(r *nftables.Rule) RuleRendering {
 					}
 				}
 			}
+
 			setRef := "@" + x.SetName
-			// nft hides the auto-generated `__set%d` names for anonymous
-			// sets, but we don't have the element list here. Surface them
-			// with a leading marker so the operator can tell.
-			if strings.HasPrefix(x.SetName, "__set") {
-				setRef = "@" + x.SetName + " (anonymous)"
+			if isAnonymousSet(x.SetName) {
+				if s, found := sets[x.SetName]; found {
+					elems := renderSetElements(s)
+					if len(elems) > 0 {
+						setRef = "{ " + strings.Join(elems, ", ") + " }"
+					}
+				}
 			}
+
 			if x.Invert {
-				matches = append(matches, fmt.Sprintf("%s != %s", label, setRef))
+				emitMatch(fmt.Sprintf("%s != %s", label, setRef))
 			} else {
-				matches = append(matches, fmt.Sprintf("%s %s", label, setRef))
+				emitMatch(fmt.Sprintf("%s %s", label, setRef))
 			}
 
 		case *expr.Counter:
@@ -235,7 +267,7 @@ func RenderRule(r *nftables.Rule) RuleRendering {
 			actions = append(actions, "redirect")
 
 		case *expr.Match:
-			matches = append(matches, fmt.Sprintf("<xt-match:%s>", x.Name))
+			emitMatch(fmt.Sprintf("<xt-match:%s>", x.Name))
 
 		case *expr.Target:
 			actions = append(actions, fmt.Sprintf("<xt-target:%s>", x.Name))
@@ -243,6 +275,13 @@ func RenderRule(r *nftables.Rule) RuleRendering {
 		default:
 			actions = append(actions, fmt.Sprintf("<expr:%T>", e))
 		}
+	}
+
+	// A pending nfproto guard with no subsequent ip-family match still
+	// belongs in the output (e.g. the rule is `meta nfproto ipv4 counter`
+	// with no other matches).
+	if pendingNFProto != "" {
+		matches = append(matches, pendingNFProto)
 	}
 
 	parts := append([]string{}, matches...)
@@ -484,6 +523,12 @@ func allZero(data []byte) bool {
 		}
 	}
 	return true
+}
+
+// isAnonymousSet recognises the names the kernel auto-assigns to anonymous
+// sets/maps generated from inline literals like `{ 22, 80, 443 }`.
+func isAnonymousSet(name string) bool {
+	return strings.HasPrefix(name, "__set") || strings.HasPrefix(name, "__map")
 }
 
 func formatBytesHex(b []byte) string {
