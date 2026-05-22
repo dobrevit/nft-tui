@@ -22,6 +22,7 @@ func main() {
 	var (
 		dumpOnly     = flag.Bool("dump", false, "fetch the ruleset, print a summary to stdout, and exit (no TUI)")
 		refreshEvery = flag.Duration("refresh", 2*time.Second, "live-counter refresh interval (e.g. 500ms, 5s, 0 to disable)")
+		writeMode    = flag.Bool("write", false, "enable edit/commit affordances (a / e / d keys, commit screen). Default is read-only.")
 	)
 	flag.Parse()
 
@@ -47,7 +48,7 @@ func main() {
 	}
 
 	app := tview.NewApplication()
-	exp := ui.NewExplorer(app, rs, conn.ListRuleset, *refreshEvery)
+	exp := ui.NewExplorer(app, rs, conn.ListRuleset, *refreshEvery, *writeMode)
 	exp.StartRefresh()
 	defer exp.StopRefresh()
 	if err := app.SetRoot(exp.Root(), true).EnableMouse(true).Run(); err != nil {

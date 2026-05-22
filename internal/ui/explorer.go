@@ -14,6 +14,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/dobrevit/nft-tui/internal/model"
+	"github.com/dobrevit/nft-tui/internal/staged"
 )
 
 // Explorer is the main screen. Build it with NewExplorer, then call Root
@@ -51,6 +52,18 @@ type Explorer struct {
 	// for actions like yank.
 	displayedRules []*model.Rule
 
+	// Phase 3 write-path state.
+	writeMode bool
+	staged    staged.ChangeList
+
+	// Editor widgets. Built once in build(), reused on every open.
+	editorTitle   *tview.TextView
+	editorBody    *tview.TextArea
+	editorComment *tview.InputField
+	editorPreview *tview.TextView
+	editorMode    editorMode
+	editorTarget  editorTarget
+
 	host string
 
 	// Refresh state.
@@ -78,13 +91,16 @@ type Explorer struct {
 // app is used so global key handlers can call QueueUpdateDraw later.
 // fetch and interval drive the live-counter refresh; pass a nil fetch
 // to disable refresh (e.g. for tests or one-shot rendering).
-func NewExplorer(app *tview.Application, rs *model.Ruleset, fetch func() (*model.Ruleset, error), interval time.Duration) *Explorer {
+// writeMode toggles the Phase 3 edit affordances (a / e / d keys, the
+// rule editor page, the commit screen). False means read-only.
+func NewExplorer(app *tview.Application, rs *model.Ruleset, fetch func() (*model.Ruleset, error), interval time.Duration, writeMode bool) *Explorer {
 	e := &Explorer{
-		app:      app,
-		rs:       rs,
-		host:     hostname(),
-		fetch:    fetch,
-		interval: interval,
+		app:       app,
+		rs:        rs,
+		host:      hostname(),
+		fetch:     fetch,
+		interval:  interval,
+		writeMode: writeMode,
 	}
 	e.indexRules()
 	e.build()
@@ -231,9 +247,17 @@ func (e *Explorer) refreshStatusBar(fetched time.Time) {
 	if e.kernelDrift {
 		drift = "  [yellow]kernel changed — press R to reload[-]"
 	}
+	mode := "RO"
+	if e.writeMode {
+		mode = "RW"
+	}
+	stagedHint := ""
+	if e.staged.Len() > 0 {
+		stagedHint = fmt.Sprintf("   [green]staged: %d[-]", e.staged.Len())
+	}
 	e.setStatus(fmt.Sprintf(
-		"MODE: RO   refreshed %s%s   [q] quit  [?] help  [Tab] switch pane",
-		fetched.Format("15:04:05"), drift,
+		"MODE: %s   refreshed %s%s%s   [q] quit  [?] help  [Tab] switch pane",
+		mode, fetched.Format("15:04:05"), stagedHint, drift,
 	))
 }
 
@@ -260,7 +284,8 @@ func (e *Explorer) build() {
 	e.pages = tview.NewPages().
 		AddPage("main", main, true, true).
 		AddPage("search", e.buildSearchPage(), true, false).
-		AddPage("help", e.buildHelpPage(), true, false)
+		AddPage("help", e.buildHelpPage(), true, false).
+		AddPage("editor", e.buildEditorPage(), true, false)
 
 	e.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.pages, 0, 1, true)
 	e.root.SetInputCapture(e.handleKey)
@@ -412,6 +437,13 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'y':
 		e.yankSelectedRule()
+		return nil
+	case 'a':
+		if e.currentChain != nil {
+			e.openEditorAdd(e.currentChain)
+		} else {
+			e.setStatus("[yellow]select a chain first to add a rule[-]")
+		}
 		return nil
 	case '?':
 		if name, _ := e.pages.GetFrontPage(); name == "help" {
