@@ -229,11 +229,27 @@ func (o *FlushChain) Target() (family model.Family, table, chain string) {
 // fmtComment returns ` comment "X"` for non-empty c, "" otherwise. The
 // leading space is part of the return value so callers can concatenate
 // unconditionally.
+//
+// nft's comment grammar is "anything between double quotes, no escape
+// mechanism". An embedded `"` terminates the string and the rest of
+// the comment becomes a syntax error. We can't escape it either —
+// nft has no \" escape (verified by the staged-op round-trip test
+// against `nft -c -f`). Substitute `"` → `'` so operator intent
+// (visible quotes around a phrase) is preserved without breaking
+// the grammar; strip newlines and NUL bytes too since they'd kill
+// either nft's parser or downstream `grep` of the audit log.
 func fmtComment(c string) string {
 	if c == "" {
 		return ""
 	}
-	// nft accepts an unquoted token or a double-quoted string. Escaping
-	// any embedded double quotes keeps the syntax valid.
-	return ` comment "` + strings.ReplaceAll(c, `"`, `\"`) + `"`
+	safe := strings.Map(func(r rune) rune {
+		switch r {
+		case '"':
+			return '\''
+		case '\n', '\r', 0:
+			return -1
+		}
+		return r
+	}, c)
+	return ` comment "` + safe + `"`
 }

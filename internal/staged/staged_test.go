@@ -71,12 +71,25 @@ func TestOpNFT(t *testing.T) {
 			want: `flush chain inet filter input`,
 		},
 		{
-			name: "comment with embedded double quote is escaped",
+			// nftables has no escape mechanism inside `comment "X"`,
+			// so an embedded " can't survive — substitute with '.
+			// Round-trip integration test
+			// (TestIntegration_StagedOpsRoundTrip) confirms `nft -c`
+			// accepts the result.
+			name: "comment with embedded double quote substituted",
 			op: &AddRule{
 				Family: model.FamilyINet, Table: "filter", Chain: "input",
 				Body: `accept`, Comment: `says "hi"`,
 			},
-			want: `add rule inet filter input accept comment "says \"hi\""`,
+			want: `add rule inet filter input accept comment "says 'hi'"`,
+		},
+		{
+			name: "comment with newline strips control chars",
+			op: &AddRule{
+				Family: model.FamilyINet, Table: "filter", Chain: "input",
+				Body: `accept`, Comment: "line one\nline two",
+			},
+			want: `add rule inet filter input accept comment "line oneline two"`,
 		},
 	}
 	for _, c := range cases {
