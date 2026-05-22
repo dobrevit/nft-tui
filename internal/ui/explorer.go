@@ -73,6 +73,11 @@ type Explorer struct {
 	dryRun      dryRunState
 	dryRunErr   string
 
+	// Live monitor.
+	monitorTable  *tview.Table
+	monitorSort   sortMetric
+	monitorPaused bool
+
 	host string
 
 	// Refresh state.
@@ -235,6 +240,9 @@ func (e *Explorer) applyRuleset(rs *model.Ruleset) {
 	if e.currentChain != nil {
 		e.showChain(e.currentChain)
 	}
+	if e.monitorVisible() {
+		e.refreshMonitor()
+	}
 }
 
 // FullRebuild reloads the ruleset from scratch and rebuilds the tree.
@@ -311,7 +319,8 @@ func (e *Explorer) build() {
 		AddPage("search", e.buildSearchPage(), true, false).
 		AddPage("help", e.buildHelpPage(), true, false).
 		AddPage("editor", e.buildEditorPage(), true, false).
-		AddPage("diff", e.buildDiffPage(), true, false)
+		AddPage("diff", e.buildDiffPage(), true, false).
+		AddPage("monitor", e.buildMonitorPage(), true, false)
 
 	e.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.pages, 0, 1, true)
 	e.root.SetInputCapture(e.handleKey)
@@ -479,6 +488,9 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'D':
 		e.openDiff()
+		return nil
+	case 'm':
+		e.openMonitor()
 		return nil
 	case '?':
 		if name, _ := e.pages.GetFrontPage(); name == "help" {
