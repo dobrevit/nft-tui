@@ -15,9 +15,9 @@
                                 │
                 ┌───────────────┴──────────────────────────┐
                 │           nftables adapter               │
-                │  read: netlink (google/nftables) OR      │
-                │        `nft -j list ruleset`             │
-                │  write: `nft -f <staged>` (transaction)  │
+                │  read:  netlink via google/nftables      │
+                │  render: own nft-syntax renderer         │
+                │  write: netlink batches (atomic)         │
                 └───────────────┬──────────────────────────┘
                                 │
                              Linux kernel (nf_tables)
@@ -59,32 +59,47 @@ applications like `htop` or `mc`, which is the look-and-feel we want.
 
 ## nftables adapter
 
-Two read paths, one write path.
+**Decision (2026-05-22): netlink-only read path via `google/nftables`.** No
+shell-out to `nft` for normal operation. Rationale: pure Go, no fork-per-tick,
+gives us the structured expression AST directly, and supports change
+monitoring (`NFT_MSG_NEW*`) so we can drop polling later.
+
+The trade-off is that `google/nftables` exposes the **binary expression AST**
+(`expr.Meta`, `expr.Payload`, `expr.Cmp`, `expr.Counter`, `expr.Verdict`, …)
+but does **not** ship a textual `nft` renderer. We own the renderer:
+`internal/nft/render.go` walks the expression list and emits canonical nft
+syntax. Unrecognised expressions fall back to a typed placeholder
+(`<expr:bitwise>`) so we never lie about what's in the kernel.
 
 ### Read
 
-- **Primary**: shell out to `nft -j list ruleset`. JSON is well-defined,
-  works on any host with `nft` ≥ 0.9, and matches what admins already debug
-  with. Parse it into the data model in [05-data-model.md](05-data-model.md).
-- **Optional fast path**: [`google/nftables`](https://github.com/google/nftables),
-  a pure-Go netlink client. Avoids forking `nft` on every refresh and supports
-  monitoring (`NFT_MSG_NEW*` events). Behind a `--netlink` flag in v1; default
-  later once it's proven.
+- Subscribe / list via `github.com/google/nftables`.
+- Counters are read with each chain (or as named counter objects); refresh
+  is either timer-tick or netlink event (when subscription is wired in
+  Phase 4).
+- For development on a host without `CAP_NET_ADMIN`, run inside an unshared
+  user/network namespace: `unshare -rn nft-tui`. Empty ruleset, but the
+  netlink calls work.
 
-Counters are refreshed by re-running `nft -j list ruleset` on a tick (default
-2 s, tunable). With netlink we can subscribe and avoid the poll.
+### Write (Phase 3 — open question)
 
-### Write
+Two viable approaches; final call deferred to Phase 3 kick-off:
 
-- **Always** through `nft -f <staged-file>`. Reasons:
-  1. nft parses & validates the entire staged ruleset atomically; partial
-     commits are impossible.
-  2. The staged file is the audit log — we keep it after commit.
-  3. Admins can copy/paste it into config management (Ansible, etc.).
-- **Dry-run**: `nft -c -f <staged-file>` before commit. Errors surface in the
-  diff/commit screen with line numbers.
-- **Snapshot**: `nft list ruleset > <path>`; restore is `nft -f <path>` after
-  `nft flush ruleset` (gated behind a scary confirmation).
+- **Netlink batches** via `Conn.Flush()`. Atomic per batch (one
+  `NFT_MSG_BEGIN`/`NFT_MSG_END`), pure Go, no shell-out, but we lose the
+  "audit log is a file admins can paste into Ansible" property unless we
+  also emit the equivalent nft text.
+- **Shell out to `nft -f <staged-file>`**. Atomic by virtue of nft's own
+  transaction, gives a human-readable audit trail for free, and `nft -c`
+  is a battle-tested validator. But it splits the adapter between two
+  mechanisms.
+
+Likely answer: **netlink for the actual commit, with our renderer also
+producing an `nft` text artefact written next to the audit log.** That
+preserves the "single source of truth in nft syntax" property without
+forking a subprocess on the commit hot path.
+
+For Phase 2 (read-only) this isn't on the critical path.
 
 ### Permissions
 

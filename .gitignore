@@ -1,0 +1,8 @@
+# build artefact
+/nft-tui
+
+# Go scratch
+*.out
+*.test
+/dist/
+/bin/
