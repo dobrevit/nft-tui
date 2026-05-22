@@ -7,31 +7,35 @@ import (
 
 // helpText is the content of the `?` overlay. Kept in sync with
 // docs/04-keybindings.md by hand for Phase 2; Phase 3 may auto-generate.
-const helpText = `[::b]nft-tui — Phase 2 keybindings[::-]
+const helpText = `[::b]nft-tui — keybindings[::-]
 
   [yellow]Navigation[-]
-    j / ↓     down
-    k / ↑     up
-    h / ←     collapse / left pane
-    l / →     expand  / right pane
-    Enter     open node / toggle expansion
-    Tab       cycle pane focus
-    g / G     top / bottom
+    j / ↓     down                Tab       cycle pane focus
+    k / ↑     up                  g / G     top / bottom
+    h / ←     collapse / left     Enter     open node / toggle
+    l / →     expand  / right
 
   [yellow]Filter & search[-]
     /         filter the current rule list
     :         global search across the whole ruleset
     Esc       cancel filter / close search
 
-  [yellow]Actions[-]
-    y         yank the selected rule's nft syntax to the clipboard (OSC 52)
-    R         full reload (use when the status bar shows kernel drift)
+  [yellow]Yank & reload[-]
+    y         yank the selected rule's nft syntax (OSC 52)
+    R         full reload (after kernel drift)
+
+  [yellow]Edit (requires --write)[-]
+    a         add a rule to the current chain
+    D         open the staged-changes / diff page
+
+  [yellow]Diff page[-]
+    F3        dry-run via nft -c -f
+    F2        commit via nft -f (after F3 passes)
+    u / U     unstage last / unstage all
 
   [yellow]Modes[-]
     q         quit
     ?         this help overlay (toggle)
-
-  [gray]Editing, dry-run and commit are not implemented in Phase 2.[-]
 
                     Press ? or Esc to close
 `

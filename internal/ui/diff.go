@@ -51,7 +51,7 @@ func (e *Explorer) buildDiffPage() tview.Primitive {
 	footer := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
-		SetText("[yellow]F3[-] dry-run   [yellow]u[-] unstage last   [yellow]U[-] unstage all   [yellow]Esc[-] back   [gray]F2 commit ships in 3.3[-]")
+		SetText("[yellow]F2[-] commit (after F3 passes)   [yellow]F3[-] dry-run   [yellow]u[-] unstage last   [yellow]U[-] unstage all   [yellow]Esc[-] back")
 
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(e.diffSummary, 0, 2, true).
@@ -80,6 +80,9 @@ func (e *Explorer) diffInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 	switch ev.Key() {
 	case tcell.KeyEsc:
 		e.closeDiff()
+		return nil
+	case tcell.KeyF2:
+		e.commitStaged()
 		return nil
 	case tcell.KeyF3:
 		e.runDryRun()
@@ -224,9 +227,8 @@ func renderNFTScript(ops []staged.Op) string {
 }
 
 // runDryRun invokes the Committer and stashes the result for display.
-// Runs synchronously — nft -c is fast enough that we don't need a
-// goroutine for the dry-run path (Phase 3.3 may revisit if commits
-// against huge rulesets take noticeable time).
+// Runs in a goroutine so the UI stays responsive against large rulesets;
+// the result lands via QueueUpdateDraw.
 func (e *Explorer) runDryRun() {
 	if e.committer == nil {
 		e.dryRun = dryRunFail
@@ -240,14 +242,69 @@ func (e *Explorer) runDryRun() {
 		e.refreshDryRunStatus()
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := e.committer.DryRun(ctx, ops); err != nil {
-		e.dryRun = dryRunFail
-		e.dryRunErr = err.Error()
-	} else {
-		e.dryRun = dryRunPass
-		e.dryRunErr = ""
+
+	e.diffStatus.SetText("[gray]dry-run: running…[-]")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := e.committer.DryRun(ctx, ops)
+		e.app.QueueUpdateDraw(func() {
+			if err != nil {
+				e.dryRun = dryRunFail
+				e.dryRunErr = err.Error()
+			} else {
+				e.dryRun = dryRunPass
+				e.dryRunErr = ""
+			}
+			e.refreshDryRunStatus()
+		})
+	}()
+}
+
+// commitStaged applies the staged ChangeList atomically via `nft -f`.
+// Gated on a previously-passing dry-run so an operator can't fat-finger
+// F2 onto an unvalidated buffer.
+func (e *Explorer) commitStaged() {
+	switch {
+	case e.committer == nil:
+		e.diffStatus.SetText("[red]no committer configured (start with --write)[-]")
+		return
+	case e.staged.Len() == 0:
+		e.diffStatus.SetText("[gray]nothing staged to commit[-]")
+		return
+	case e.dryRun != dryRunPass:
+		e.diffStatus.SetText(
+			"[yellow]press F3 first — commit requires a passing dry-run[-]")
+		return
 	}
-	e.refreshDryRunStatus()
+
+	ops := e.staged.Ops()
+	e.diffStatus.SetText("[gray]committing…[-]")
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		auditPath, err := e.committer.Commit(ctx, ops)
+		e.app.QueueUpdateDraw(func() {
+			if err != nil {
+				e.dryRun = dryRunFail
+				e.dryRunErr = "commit failed: " + err.Error()
+				e.refreshDryRunStatus()
+				return
+			}
+			n := e.staged.Len()
+			e.staged.Clear()
+			e.dryRun = dryRunNotRun
+			// Pull a fresh snapshot so the explorer reflects the new
+			// state and the rule index includes any newly-assigned
+			// handles.
+			e.FullRebuild()
+			e.closeDiff()
+			msg := fmt.Sprintf("[green]committed %d change(s)[-]", n)
+			if auditPath != "" {
+				msg += fmt.Sprintf("  audit: %s", auditPath)
+			}
+			e.setStatus(msg)
+		})
+	}()
 }
