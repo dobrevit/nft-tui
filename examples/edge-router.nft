@@ -1,0 +1,85 @@
+# edge-router.nft — small office / home edge router.
+#
+# Two interfaces (eth0 = WAN, eth1 = LAN), source NAT outbound,
+# port forward for the inside web server, conservative inbound
+# filter on the WAN.  Adjust the interfaces, addresses, and
+# allowlist sets to match your environment.
+#
+# Load:
+#
+#     nft -f edge-router.nft
+#
+# Browse inside nft-tui:
+#
+#     unshare -rn sh -c 'nft -f edge-router.nft && nft-tui'
+
+flush ruleset
+
+table inet filter {
+    set wan_admin_v4 {
+        type ipv4_addr
+        flags interval
+        elements = { 198.51.100.0/24, 203.0.113.7 }
+    }
+
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        # Loopback and existing flows are always fine.
+        iifname "lo" accept
+        ct state established,related accept
+        ct state invalid drop
+
+        # ICMP is debugging fuel — keep it but ratelimit so a flood
+        # can't fill the syslog.
+        ip protocol icmp limit rate 5/second accept
+        ip6 nexthdr icmpv6 limit rate 5/second accept
+
+        # SSH only from the admin allowlist; further-ratelimited.
+        iifname "eth0" ip saddr @wan_admin_v4 tcp dport 22 \
+            limit rate 3/minute accept comment "ssh from admin CIDRs"
+
+        # LAN side is trusted (this is just an edge router, not a
+        # multi-tenant zone). Tighten if you have hostile users.
+        iifname "eth1" accept
+
+        # Drop everything else with a log so you can see it later.
+        log prefix "DROP-input: " counter drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+
+        ct state established,related accept
+
+        # LAN → WAN — outbound is fine.
+        iifname "eth1" oifname "eth0" accept
+
+        # WAN → LAN port forwards go here AFTER the dnat below
+        # rewrites the destination. The match references the inside
+        # address, not the public one.
+        oifname "eth1" ip daddr 10.0.0.10 tcp dport 443 accept comment "inside web"
+
+        log prefix "DROP-forward: " counter drop
+    }
+
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}
+
+table ip nat {
+    chain prerouting {
+        type nat hook prerouting priority -100;
+
+        # Public 443 → inside 10.0.0.10.
+        iifname "eth0" tcp dport 443 dnat to 10.0.0.10:443
+    }
+
+    chain postrouting {
+        type nat hook postrouting priority 100;
+
+        # Source-NAT everything LAN→WAN onto the WAN address.
+        oifname "eth0" masquerade
+    }
+}

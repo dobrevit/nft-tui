@@ -1,0 +1,67 @@
+# web-server.nft — single-host firewall for a typical Linux server.
+#
+# Allows: SSH (from a small admin set, ratelimited), HTTP, HTTPS,
+#         the usual ICMP, loopback, existing flows.
+# Blocks: everything else inbound.
+#
+# Designed to be safe to load over an SSH session — `ct state
+# established,related accept` runs before any drop rule so the
+# in-flight session you're typing on doesn't die.
+#
+# Load:
+#
+#     nft -f web-server.nft
+
+flush ruleset
+
+table inet filter {
+    set admin_v4 {
+        type ipv4_addr
+        flags interval
+        elements = { 198.51.100.0/24 }
+    }
+    set admin_v6 {
+        type ipv6_addr
+        flags interval
+        elements = { 2001:db8:1::/48 }
+    }
+
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        # Anything we're already talking to.
+        ct state established,related accept
+        ct state invalid drop
+
+        # Local traffic.
+        iifname "lo" accept
+
+        # ICMP — diagnostic essentials.
+        ip protocol icmp icmp type { echo-request, destination-unreachable, time-exceeded } accept
+        ip6 nexthdr icmpv6 icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+
+        # SSH: admin allowlist + a per-source ratelimit to deter
+        # brute-force scans.
+        tcp dport 22 ct state new \
+            limit rate 5/minute \
+            ip saddr @admin_v4 counter accept comment "ssh v4 admin"
+        tcp dport 22 ct state new \
+            limit rate 5/minute \
+            ip6 saddr @admin_v6 counter accept comment "ssh v6 admin"
+
+        # Web — open to the world.
+        tcp dport { 80, 443 } counter accept comment "web"
+
+        # Everything else: log + drop. The log line carries a tag
+        # so you can grep it out of journald.
+        log prefix "FW-DROP: " counter drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}

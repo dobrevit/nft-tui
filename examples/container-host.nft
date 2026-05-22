@@ -1,0 +1,61 @@
+# container-host.nft — host firewall coexisting with a container
+# runtime (Docker / podman / containerd).
+#
+# Container runtimes inject their OWN tables (typically called
+# `docker` in iptables-nft mode, or `nat` / `filter` with chains
+# `DOCKER-*`). We keep this ruleset in a separate inet table named
+# `filter` so the two coexist without arguing over chain ownership.
+#
+# The trick is in the forward chain: we accept anything the runtime
+# would accept (its rules run at a different priority via jump
+# targets it manages), and only DROP what's not container-bound.
+# In practice that means accept-from-docker0 and let the runtime
+# decide the rest.
+#
+# Load:
+#
+#     nft -f container-host.nft
+
+flush ruleset
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        iifname "lo" accept
+        ct state established,related accept
+        ct state invalid drop
+
+        ip protocol icmp limit rate 5/second accept
+        ip6 nexthdr icmpv6 limit rate 5/second accept
+
+        # SSH from anywhere — tighten with a set if appropriate.
+        tcp dport 22 ct state new limit rate 5/minute counter accept
+
+        # Container metadata services bound to the docker bridge.
+        # If you're not running cAdvisor / Prometheus, comment out.
+        iifname "docker0" tcp dport { 9090, 9100 } counter accept comment "metrics"
+
+        log prefix "DROP-input: " counter drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy accept;
+
+        # Established flows are always fine.
+        ct state established,related accept
+
+        # Container-to-internet outbound: let the bridge handle it.
+        iifname "docker0" counter accept comment "container egress"
+
+        # Inbound to a published container port arrives on eth0 and
+        # the docker bridge does the DNAT — by the time the packet
+        # reaches forward, the destination is already a container IP.
+        # We accept it; the runtime's own chain has the final say.
+        oifname "docker0" counter accept comment "to container"
+    }
+
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}

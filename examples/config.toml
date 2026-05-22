@@ -1,5 +1,17 @@
 # nft-tui example config file.
 #
+# Companion files in this directory:
+#
+#   edge-router.nft     SOHO edge router with NAT + port forward
+#   web-server.nft      single-host server (SSH + HTTP + HTTPS)
+#   container-host.nft  host coexisting with Docker / podman
+#
+# Load any of them into an unprivileged netns to play with nft-tui
+# without touching your real ruleset:
+#
+#     unshare -rn sh -c 'nft -f examples/web-server.nft && nft-tui'
+#
+#
 # Place this at one of:
 #
 #   $XDG_CONFIG_HOME/nft-tui/config.toml   (default if XDG_CONFIG_HOME is set)
