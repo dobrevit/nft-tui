@@ -63,6 +63,13 @@ type Explorer struct {
 	// from --columns at startup.
 	columnsIdx int
 
+	// Rule-list sort. Default is natural (kernel-evaluation) order;
+	// `s` cycles to packets/bytes, `S` reverses. The title bar shows
+	// a non-natural sort so the operator can't accidentally read out-
+	// of-order rules as the live firewall semantics.
+	ruleSort        ruleSortMode
+	ruleSortReverse bool
+
 	// Phase 3 write-path state.
 	writeMode bool
 	staged    staged.ChangeList
@@ -628,6 +635,12 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 	case 'c':
 		e.cycleColumns()
 		return nil
+	case 's':
+		e.cycleRuleSort()
+		return nil
+	case 'S':
+		e.toggleRuleSortReverse()
+		return nil
 	case '?':
 		if name, _ := e.pages.GetFrontPage(); name == "help" {
 			e.pages.HidePage("help")
@@ -759,6 +772,9 @@ func (e *Explorer) showChain(c *model.Chain) {
 	if e.filter != "" {
 		title += fmt.Sprintf(" — filter: %q", e.filter)
 	}
+	if e.ruleSort != ruleSortNatural {
+		title += fmt.Sprintf(" — sorted: %s", e.sortDescription())
+	}
 	e.rules.SetTitle(title)
 
 	cols := e.activeColumnSet()
@@ -766,24 +782,29 @@ func (e *Explorer) showChain(c *model.Chain) {
 		e.rules.SetCell(0, col, headerCell(spec.header))
 	}
 
+	// Filter first, sort second, render third. Keeping the three
+	// phases separate means the sort never reaches into c.Rules
+	// (which IS the kernel-evaluation order; mutating it would lie
+	// about what the firewall does) and the filter doesn't have to
+	// understand sort state.
 	e.displayedRules = e.displayedRules[:0]
-	displayRow := 1
-	matched := 0
 	for _, r := range c.Rules {
 		if !ruleMatches(r, e.filter) {
 			continue
 		}
-		matched++
 		e.displayedRules = append(e.displayedRules, r)
-		for col, spec := range cols.columns {
-			e.rules.SetCell(displayRow, col, dataCell(spec.value(r)))
-		}
-		displayRow++
 	}
+	e.sortDisplayedRules()
+	for i, r := range e.displayedRules {
+		for col, spec := range cols.columns {
+			e.rules.SetCell(i+1, col, dataCell(spec.value(r)))
+		}
+	}
+
 	switch {
 	case len(c.Rules) == 0:
 		e.rules.SetCell(1, 0, dataCell("[gray]<empty>[-]"))
-	case matched == 0:
+	case len(e.displayedRules) == 0:
 		e.rules.SetCell(1, 0, dataCell("[gray]<no matches for filter>[-]"))
 	}
 }

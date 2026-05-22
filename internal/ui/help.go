@@ -29,6 +29,7 @@ const helpText = `[::b]nft-tui — keybindings[::-]
     R         full reload (after kernel drift)
     m         live monitor (top-N by pps/bps/Δpkts)
     c         cycle rule-list columns (default/minimal/debug/wide)
+    s / S     cycle / reverse rule-list sort (natural → pps → bps)
 
   [yellow]Edit (requires --write)[-]
     a         add a rule to the current chain (append)
