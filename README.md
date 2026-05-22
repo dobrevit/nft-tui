@@ -64,6 +64,18 @@ Development without privileges, inside an unshared user/net namespace:
 $ unshare -rn ./nft-tui
 ```
 
+Via the prebuilt container image (multi-arch, Alpine base with
+`nft` installed):
+
+```sh
+$ docker run --rm -it --net=host --cap-add=NET_ADMIN \
+    ghcr.io/dobrevit/nft-tui:latest
+```
+
+`--net=host` puts nft-tui in the host's network namespace so the
+netlink socket sees the real ruleset; `--cap-add=NET_ADMIN` is what
+lets it issue the nf_tables syscalls.
+
 See `nft-tui -help` and `man nft-tui` for the full reference.
 
 ## Configuration

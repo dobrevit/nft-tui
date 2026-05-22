@@ -153,6 +153,67 @@ nfpms:
         file_info:
           mode: 0644
 
+# Container images — one per arch, then a manifest list that joins
+# them under a single tag for `docker pull` of either arch.
+dockers:
+  - id: nft-tui-amd64
+    image_templates:
+      - "ghcr.io/dobrevit/nft-tui:{{ .Tag }}-amd64"
+      - "ghcr.io/dobrevit/nft-tui:v{{ .Major }}-amd64"
+      - "ghcr.io/dobrevit/nft-tui:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    goarch: amd64
+    extra_files:
+      - examples/config.toml
+      - man/nft-tui.1
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Terminal UI for inspecting and managing nftables"
+      - "--label=org.opencontainers.image.url=https://github.com/dobrevit/nft-tui"
+      - "--label=org.opencontainers.image.source=https://github.com/dobrevit/nft-tui"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+  - id: nft-tui-arm64
+    image_templates:
+      - "ghcr.io/dobrevit/nft-tui:{{ .Tag }}-arm64"
+      - "ghcr.io/dobrevit/nft-tui:v{{ .Major }}-arm64"
+      - "ghcr.io/dobrevit/nft-tui:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    goarch: arm64
+    extra_files:
+      - examples/config.toml
+      - man/nft-tui.1
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Terminal UI for inspecting and managing nftables"
+      - "--label=org.opencontainers.image.url=https://github.com/dobrevit/nft-tui"
+      - "--label=org.opencontainers.image.source=https://github.com/dobrevit/nft-tui"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "ghcr.io/dobrevit/nft-tui:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/dobrevit/nft-tui:{{ .Tag }}-amd64"
+      - "ghcr.io/dobrevit/nft-tui:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/dobrevit/nft-tui:v{{ .Major }}"
+    image_templates:
+      - "ghcr.io/dobrevit/nft-tui:v{{ .Major }}-amd64"
+      - "ghcr.io/dobrevit/nft-tui:v{{ .Major }}-arm64"
+  - name_template: "ghcr.io/dobrevit/nft-tui:latest"
+    image_templates:
+      - "ghcr.io/dobrevit/nft-tui:latest-amd64"
+      - "ghcr.io/dobrevit/nft-tui:latest-arm64"
+
 release:
   draft: true
   prerelease: auto
