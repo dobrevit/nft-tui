@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/google/nftables"
@@ -14,8 +15,12 @@ import (
 
 // Conn wraps a netlink connection to the kernel's nftables subsystem.
 // The zero value is not usable; call NewConn.
+//
+// Methods on Conn are serialised by an internal mutex; the underlying
+// netlink socket is not designed for concurrent use.
 type Conn struct {
-	c *nftables.Conn
+	mu sync.Mutex
+	c  *nftables.Conn
 }
 
 // NewConn opens a netlink connection. On a host without CAP_NET_ADMIN this
@@ -42,8 +47,13 @@ func (c *Conn) Close() error {
 // renders rules into our model. Set elements are fetched eagerly so the
 // renderer can inline anonymous sets (`__set%d`) into the rule text.
 func (c *Conn) ListRuleset() (*model.Ruleset, error) {
-	if c == nil || c.c == nil {
+	if c == nil {
 		return nil, errors.New("nft.Conn is nil")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.c == nil {
+		return nil, errors.New("nft.Conn is closed")
 	}
 
 	families := []nftables.TableFamily{

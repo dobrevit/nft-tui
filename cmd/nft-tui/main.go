@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/rivo/tview"
 
@@ -19,7 +20,8 @@ import (
 
 func main() {
 	var (
-		dumpOnly = flag.Bool("dump", false, "fetch the ruleset, print a summary to stdout, and exit (no TUI)")
+		dumpOnly     = flag.Bool("dump", false, "fetch the ruleset, print a summary to stdout, and exit (no TUI)")
+		refreshEvery = flag.Duration("refresh", 2*time.Second, "live-counter refresh interval (e.g. 500ms, 5s, 0 to disable)")
 	)
 	flag.Parse()
 
@@ -45,7 +47,9 @@ func main() {
 	}
 
 	app := tview.NewApplication()
-	exp := ui.NewExplorer(app, rs)
+	exp := ui.NewExplorer(app, rs, conn.ListRuleset, *refreshEvery)
+	exp.StartRefresh()
+	defer exp.StopRefresh()
 	if err := app.SetRoot(exp.Root(), true).EnableMouse(true).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "nft-tui: %v\n", err)
 		os.Exit(1)

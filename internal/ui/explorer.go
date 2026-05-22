@@ -22,6 +22,7 @@ type Explorer struct {
 	app *tview.Application
 	rs  *model.Ruleset
 
+	header *tview.TextView
 	tree   *tview.TreeView
 	detail *tview.Pages
 	rules  *tview.Table
@@ -30,25 +31,196 @@ type Explorer struct {
 	root   *tview.Flex
 
 	host string
+
+	// Refresh state.
+	fetch    func() (*model.Ruleset, error)
+	interval time.Duration
+	stop     chan struct{}
+
+	// ruleIdx points to every Rule in the current Ruleset, keyed by
+	// (family, table, chain, handle). Used to merge fresh counters in
+	// place on each tick without disturbing tree state.
+	ruleIdx map[string]*model.Rule
+
+	// currentChain is the chain currently being shown in the right pane,
+	// or nil if the right pane shows a Table/Set/empty info view. Tracked
+	// so the refresh tick can re-render the visible rule table.
+	currentChain *model.Chain
+
+	// kernelDrift is set when a refresh detected a structural change that
+	// the in-place merge couldn't apply. The status bar surfaces it; the
+	// tree is rebuilt on the next refresh after the user opens a new node.
+	kernelDrift bool
 }
 
 // NewExplorer builds the explorer screen against the supplied ruleset.
 // app is used so global key handlers can call QueueUpdateDraw later.
-func NewExplorer(app *tview.Application, rs *model.Ruleset) *Explorer {
+// fetch and interval drive the live-counter refresh; pass a nil fetch
+// to disable refresh (e.g. for tests or one-shot rendering).
+func NewExplorer(app *tview.Application, rs *model.Ruleset, fetch func() (*model.Ruleset, error), interval time.Duration) *Explorer {
 	e := &Explorer{
-		app:  app,
-		rs:   rs,
-		host: hostname(),
+		app:      app,
+		rs:       rs,
+		host:     hostname(),
+		fetch:    fetch,
+		interval: interval,
 	}
+	e.indexRules()
 	e.build()
 	return e
+}
+
+// indexRules rebuilds the (family, table, chain, handle) → *Rule index from
+// the current Ruleset. Called after every full reload.
+func (e *Explorer) indexRules() {
+	e.ruleIdx = make(map[string]*model.Rule)
+	for _, t := range e.rs.Tables {
+		for _, c := range t.Chains {
+			for _, r := range c.Rules {
+				e.ruleIdx[ruleKey(r)] = r
+			}
+		}
+	}
+}
+
+// ruleKey returns the canonical key for a rule across refresh ticks.
+// Stable as long as the rule's handle isn't reused (the kernel does not
+// reuse handles within a chain's lifetime).
+func ruleKey(r *model.Rule) string {
+	return fmt.Sprintf("%s|%s|%s|%d",
+		r.Chain.Table.Family, r.Chain.Table.Name, r.Chain.Name, r.Handle)
+}
+
+// StartRefresh launches the background ticker that polls for fresh
+// counters. Safe to call once; subsequent calls are no-ops.
+func (e *Explorer) StartRefresh() {
+	if e.fetch == nil || e.interval <= 0 || e.stop != nil {
+		return
+	}
+	e.stop = make(chan struct{})
+	go e.refreshLoop()
+}
+
+// StopRefresh stops the background ticker. Idempotent.
+func (e *Explorer) StopRefresh() {
+	if e.stop == nil {
+		return
+	}
+	close(e.stop)
+	e.stop = nil
+}
+
+func (e *Explorer) refreshLoop() {
+	t := time.NewTicker(e.interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-e.stop:
+			return
+		case <-t.C:
+			rs, err := e.fetch()
+			e.app.QueueUpdateDraw(func() {
+				if err != nil {
+					e.setStatus(fmt.Sprintf("[red]refresh error: %v[-]", err))
+					return
+				}
+				e.applyRuleset(rs)
+			})
+		}
+	}
+}
+
+// applyRuleset merges a freshly-fetched ruleset into the live UI. If the
+// structure matches (same rule handles, same chain layout), counters are
+// updated in place — tree expansion, selection, and scroll positions are
+// preserved. Structural changes flip kernelDrift on; the user can press
+// `R` to do a full rebuild.
+func (e *Explorer) applyRuleset(rs *model.Ruleset) {
+	newRules := map[string]*model.Rule{}
+	for _, t := range rs.Tables {
+		for _, c := range t.Chains {
+			for _, r := range c.Rules {
+				newRules[ruleKey(r)] = r
+			}
+		}
+	}
+
+	structural := len(newRules) != len(e.ruleIdx)
+	if !structural {
+		for k := range newRules {
+			if _, ok := e.ruleIdx[k]; !ok {
+				structural = true
+				break
+			}
+		}
+	}
+
+	if structural {
+		e.kernelDrift = true
+		e.refreshStatusBar(rs.FetchedAt)
+		return
+	}
+
+	// In-place counter merge — keeps every pointer in e.rs valid.
+	for k, old := range e.ruleIdx {
+		if nr, ok := newRules[k]; ok {
+			old.Counter = nr.Counter
+		}
+	}
+	e.rs.FetchedAt = rs.FetchedAt
+	e.refreshHeader()
+	e.refreshStatusBar(rs.FetchedAt)
+	if e.currentChain != nil {
+		e.showChain(e.currentChain)
+	}
+}
+
+// FullRebuild reloads the ruleset from scratch and rebuilds the tree.
+// Called from the `R` keybinding when kernelDrift is set, or manually by
+// the user who suspects external changes.
+func (e *Explorer) FullRebuild() {
+	if e.fetch == nil {
+		return
+	}
+	rs, err := e.fetch()
+	if err != nil {
+		e.setStatus(fmt.Sprintf("[red]rebuild failed: %v[-]", err))
+		return
+	}
+	e.rs = rs
+	e.currentChain = nil
+	e.kernelDrift = false
+	e.indexRules()
+	e.refreshHeader()
+	e.refreshTree()
+	e.detail.SwitchToPage("info")
+	e.info.SetText("[gray]Reloaded. Select a chain, table, or set on the left.[-]")
+	e.refreshStatusBar(rs.FetchedAt)
+}
+
+func (e *Explorer) refreshHeader() {
+	e.header.SetText(fmt.Sprintf(
+		"[::b]nft-tui[::-]  host: %s   ruleset @ %s",
+		e.host, e.rs.FetchedAt.Format("15:04:05"),
+	))
+}
+
+func (e *Explorer) refreshStatusBar(fetched time.Time) {
+	drift := ""
+	if e.kernelDrift {
+		drift = "  [yellow]kernel changed — press R to reload[-]"
+	}
+	e.setStatus(fmt.Sprintf(
+		"MODE: RO   refreshed %s%s   [q] quit  [?] help  [Tab] switch pane",
+		fetched.Format("15:04:05"), drift,
+	))
 }
 
 // Root returns the top-level widget for mounting.
 func (e *Explorer) Root() tview.Primitive { return e.root }
 
 func (e *Explorer) build() {
-	header := e.buildHeader()
+	e.buildHeader()
 	e.buildTree()
 	e.buildDetail()
 	e.buildStatus()
@@ -60,35 +232,22 @@ func (e *Explorer) build() {
 
 	e.root = tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(header, 1, 0, false).
+		AddItem(e.header, 1, 0, false).
 		AddItem(body, 0, 1, true).
 		AddItem(e.status, 1, 0, false)
 
 	e.root.SetInputCapture(e.handleKey)
 }
 
-func (e *Explorer) buildHeader() *tview.TextView {
-	h := tview.NewTextView().
+func (e *Explorer) buildHeader() {
+	e.header = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
-	h.SetText(fmt.Sprintf(
-		"[::b]nft-tui[::-]  host: %s   ruleset @ %s",
-		e.host, e.rs.FetchedAt.Format("15:04:05"),
-	))
-	return h
+	e.refreshHeader()
 }
 
 func (e *Explorer) buildTree() {
-	rootNode := tview.NewTreeNode(fmt.Sprintf("Ruleset (%d tables)", len(e.rs.Tables))).
-		SetColor(tcell.ColorYellow).
-		SetSelectable(false)
-	for _, t := range e.rs.Tables {
-		rootNode.AddChild(e.buildTableNode(t))
-	}
-
 	e.tree = tview.NewTreeView().
-		SetRoot(rootNode).
-		SetCurrentNode(rootNode).
 		SetTopLevel(0).
 		SetGraphics(true).
 		SetGraphicsColor(tcell.ColorDarkGray)
@@ -97,6 +256,20 @@ func (e *Explorer) buildTree() {
 	e.tree.SetSelectedFunc(func(n *tview.TreeNode) {
 		n.SetExpanded(!n.IsExpanded())
 	})
+	e.refreshTree()
+}
+
+// refreshTree rebuilds the TreeNode hierarchy from the current Ruleset
+// and swaps it into the existing TreeView. The TreeView widget identity
+// is preserved so its place in the layout is stable.
+func (e *Explorer) refreshTree() {
+	rootNode := tview.NewTreeNode(fmt.Sprintf("Ruleset (%d tables)", len(e.rs.Tables))).
+		SetColor(tcell.ColorYellow).
+		SetSelectable(false)
+	for _, t := range e.rs.Tables {
+		rootNode.AddChild(e.buildTableNode(t))
+	}
+	e.tree.SetRoot(rootNode).SetCurrentNode(rootNode)
 }
 
 func (e *Explorer) buildTableNode(t *model.Table) *tview.TreeNode {
@@ -160,8 +333,12 @@ func (e *Explorer) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	}
-	if ev.Rune() == 'q' {
+	switch ev.Rune() {
+	case 'q':
 		e.app.Stop()
+		return nil
+	case 'R':
+		e.FullRebuild()
 		return nil
 	}
 	return ev
@@ -173,12 +350,16 @@ func (e *Explorer) onTreeChange(node *tview.TreeNode) {
 	}
 	switch ref := node.GetReference().(type) {
 	case *model.Chain:
+		e.currentChain = ref
 		e.showChain(ref)
 	case *model.Table:
+		e.currentChain = nil
 		e.showTable(ref)
 	case *model.Set:
+		e.currentChain = nil
 		e.showSet(ref)
 	default:
+		e.currentChain = nil
 		e.detail.SwitchToPage("info")
 		e.info.SetText("[gray]Select a chain, table, or set on the left.[-]")
 	}
