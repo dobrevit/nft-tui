@@ -49,9 +49,11 @@ func (e *Explorer) buildEditorPage() tview.Primitive {
 	e.editorBody = tview.NewTextArea().
 		SetPlaceholder(`e.g. tcp dport 22 counter accept`)
 	e.editorBody.SetBorder(true).
-		SetTitle(" Rule body — nft syntax ").
+		SetTitle(" Rule body — raw nft syntax — F8 to switch to form ").
 		SetTitleAlign(tview.AlignLeft)
 	e.editorBody.SetChangedFunc(e.refreshEditorPreview)
+
+	e.editorForm = e.buildEditorForm()
 
 	e.editorComment = tview.NewInputField().
 		SetLabel("Comment: ").
@@ -68,11 +70,17 @@ func (e *Explorer) buildEditorPage() tview.Primitive {
 	footer := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
-		SetText("[yellow]F5[-] stage   [yellow]Esc[-] cancel   [gray](F6 stage+diff coming in 3.2)[-]")
+		SetText("[yellow]F5[-] stage   [yellow]F6[-] stage+diff   [yellow]F8[-] form/raw   [yellow]Esc[-] cancel")
+
+	// editorViews holds form and raw side-by-side at the same depth;
+	// only one is visible at a time. Initial state: form on, raw off.
+	e.editorViews = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(e.editorForm, 0, 3, true).
+		AddItem(e.editorBody, 0, 0, false)
 
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(e.editorTitle, 1, 0, false).
-		AddItem(e.editorBody, 0, 3, true).
+		AddItem(e.editorViews, 0, 3, true).
 		AddItem(e.editorComment, 1, 0, false).
 		AddItem(e.editorPreview, 0, 2, false).
 		AddItem(footer, 1, 0, false)
@@ -108,6 +116,9 @@ func (e *Explorer) editorInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 		e.stageFromEditor(true)
 		e.openDiff()
 		return nil
+	case tcell.KeyF8:
+		e.toggleEditorView()
+		return nil
 	case tcell.KeyTab:
 		// Cycle focus among the three editable widgets.
 		switch e.app.GetFocus() {
@@ -122,7 +133,9 @@ func (e *Explorer) editorInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 }
 
 // openEditorAdd opens the editor in modeAdd targeting the supplied chain.
-// Requires writeMode; no-op otherwise.
+// Requires writeMode; no-op otherwise. Defaults to the form view —
+// new rules are usually simple enough that the structured form is
+// faster than typing nft by hand.
 func (e *Explorer) openEditorAdd(c *model.Chain) {
 	if !e.writeMode {
 		e.setStatus("[yellow]read-only mode — start with --write to edit[-]")
@@ -139,13 +152,18 @@ func (e *Explorer) openEditorAdd(c *model.Chain) {
 		c.Table.Family, c.Table.Name, c.Name))
 	e.editorBody.SetText("", true)
 	e.editorComment.SetText("")
+	e.resetForm()
+	e.showFormView()
 	e.refreshEditorPreview()
 	e.pages.ShowPage("editor")
-	e.app.SetFocus(e.editorBody)
+	e.app.SetFocus(e.editorForm)
 }
 
 // openEditorReplace opens the editor in modeEdit for the supplied rule.
-// The body is prefilled with the rule's rendered NFT text.
+// The body is prefilled with the rule's rendered NFT text. Edits
+// default to the raw view because parsing existing nft text into the
+// form's structured fields is more complex than this phase ships;
+// the operator can hit F8 once they've cleared the body to switch.
 func (e *Explorer) openEditorReplace(r *model.Rule) {
 	if !e.writeMode {
 		e.setStatus("[yellow]read-only mode — start with --write to edit[-]")
@@ -168,8 +186,10 @@ func (e *Explorer) openEditorReplace(r *model.Rule) {
 	if r.Comment != "" {
 		comment = r.Comment
 	}
+	e.resetForm()
 	e.editorBody.SetText(body, true)
 	e.editorComment.SetText(comment)
+	e.showRawView()
 	e.refreshEditorPreview()
 	e.pages.ShowPage("editor")
 	e.app.SetFocus(e.editorBody)
@@ -258,9 +278,26 @@ func (e *Explorer) openEditorInsert(r *model.Rule, after bool) {
 		rel, r.Handle, c.Table.Family, c.Table.Name, c.Name))
 	e.editorBody.SetText("", true)
 	e.editorComment.SetText("")
+	e.resetForm()
+	e.showFormView()
 	e.refreshEditorPreview()
 	e.pages.ShowPage("editor")
-	e.app.SetFocus(e.editorBody)
+	e.app.SetFocus(e.editorForm)
+}
+
+// showFormView and showRawView force the editor into one of the two
+// view modes without going through the F8 toggle (used by the open*
+// helpers to set the default on each open).
+func (e *Explorer) showFormView() {
+	e.editorView = viewForm
+	e.editorViews.ResizeItem(e.editorBody, 0, 0)
+	e.editorViews.ResizeItem(e.editorForm, 0, 3)
+}
+
+func (e *Explorer) showRawView() {
+	e.editorView = viewRaw
+	e.editorViews.ResizeItem(e.editorForm, 0, 0)
+	e.editorViews.ResizeItem(e.editorBody, 0, 3)
 }
 
 // stageFromEditor appends the current editor contents to the staged list

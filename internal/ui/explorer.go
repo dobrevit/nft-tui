@@ -61,10 +61,17 @@ type Explorer struct {
 	// Editor widgets. Built once in build(), reused on every open.
 	editorTitle   *tview.TextView
 	editorBody    *tview.TextArea
+	editorForm    *tview.Form
 	editorComment *tview.InputField
 	editorPreview *tview.TextView
-	editorMode    editorMode
-	editorTarget  editorTarget
+	// editorViews is the Flex that contains both the form and the raw
+	// TextArea; ResizeItem on one of them switches which is visible
+	// (and gives the size to the other).
+	editorViews *tview.Flex
+	editorView  editorViewMode
+	editorMode  editorMode
+	editorTarget editorTarget
+	formFields   *formFields
 
 	// Diff/commit widgets.
 	diffSummary   *tview.TextView
