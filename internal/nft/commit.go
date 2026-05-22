@@ -81,7 +81,37 @@ func (c *Committer) Commit(ctx context.Context, ops []staged.Op) (auditPath stri
 	if c.AuditDir == "" {
 		return "", nil
 	}
-	return archive(path, c.AuditDir)
+	archived, err := archive(path, c.AuditDir)
+	if err != nil {
+		return "", err
+	}
+	// Also append a structured entry to the rolling audit.log. Best
+	// effort: a failure here doesn't undo the (successful) commit;
+	// surface the error so the UI can warn but don't roll back.
+	uid, user := currentOperator()
+	if auditErr := c.Audit(AuditEntry{
+		Action: "commit", UID: uid, User: user,
+		Ops:  len(ops),
+		File: filepath.Base(archived),
+		Body: scriptFromOps(ops),
+	}); auditErr != nil {
+		return archived, fmt.Errorf("commit succeeded but audit log write failed: %w", auditErr)
+	}
+	return archived, nil
+}
+
+// scriptFromOps renders the staged Op list as the canonical nft
+// script. Mirrors what writeStagedFile produces. Used for the audit
+// log body so the audit file contains the exact text applied (the
+// archived file already has it, but inlining keeps `grep` workflows
+// snappy: one file, every change, no joining).
+func scriptFromOps(ops []staged.Op) string {
+	var b strings.Builder
+	for _, op := range ops {
+		b.WriteString(op.NFT())
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // ErrNoChanges signals that Commit was called with no staged ops.

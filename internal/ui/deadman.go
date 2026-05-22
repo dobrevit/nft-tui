@@ -164,6 +164,10 @@ func (e *Explorer) beginRestore() {
 			})
 			return
 		}
+		_ = e.committer.Audit(nft.AuditEntry{
+			Action: "restore",
+			File:   e.deadman.snapshotPath,
+		})
 
 		// Step 3: arm the timer. The next interaction is via deadmanLoop.
 		e.deadman.confirmCh = make(chan struct{})
@@ -215,6 +219,12 @@ func (e *Explorer) executeRollback(successMsg string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err := e.committer.Restore(ctx, e.deadman.rollbackPath)
+	if err == nil {
+		_ = e.committer.Audit(nft.AuditEntry{
+			Action: "rollback",
+			File:   e.deadman.rollbackPath,
+		})
+	}
 	e.app.QueueUpdateDraw(func() {
 		if err != nil {
 			e.deadman.phase = dmError
