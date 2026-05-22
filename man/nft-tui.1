@@ -37,6 +37,23 @@ every dry-run and a paste-ready audit file after every commit.
 
 .SH OPTIONS
 .TP
+\fB\-config\fR \fIpath\fR
+Read defaults from
+.IR path .
+When omitted,
+.B nft-tui
+looks for
+.B $XDG_CONFIG_HOME/nft-tui/config.toml
+(or
+.BR ~/.config/nft-tui/config.toml )
+and reads it silently if present. With
+.BR \-config ,
+a missing file is a fatal error \(em the operator asked for that
+file specifically. See
+.B FILES
+for the format.
+
+.TP
 .B \-dump
 Fetch the ruleset, print a structured summary to stdout, and exit.
 Useful in scripts or smoke tests where the TUI isn't desired.
@@ -206,6 +223,30 @@ Quit.
 Help overlay (toggle).
 
 .SH FILES
+.TP
+.B $XDG_CONFIG_HOME/nft-tui/config.toml
+Per-host defaults. Keys mirror the CLI flags; missing keys fall back
+to the built-in defaults; CLI flags always override.
+.RS 4
+.EX
+refresh   = "2s"
+write     = false
+monitor   = true
+theme     = "default"
+columns   = "default"
+audit_dir = "/var/lib/nft-tui"
+.EE
+.RE
+Falls back to
+.B ~/.config/nft-tui/config.toml
+when
+.B XDG_CONFIG_HOME
+is unset. An example config ships at
+.B /usr/share/doc/nft-tui/config.toml
+(also in
+.B examples/
+in the source tree).
+
 .TP
 .B $XDG_STATE_HOME/nft-tui/audit.log
 Append-only audit log. One header per operation:

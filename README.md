@@ -66,6 +66,21 @@ $ unshare -rn ./nft-tui
 
 See `nft-tui -help` and `man nft-tui` for the full reference.
 
+## Configuration
+
+`nft-tui` reads defaults from `$XDG_CONFIG_HOME/nft-tui/config.toml`
+(or `~/.config/nft-tui/config.toml` when XDG_CONFIG_HOME is unset).
+CLI flags always override; a missing default file is silent. To
+point at a specific file:
+
+```sh
+nft-tui --config /etc/nft-tui/config.toml
+```
+
+A documented sample lives at [examples/config.toml](examples/config.toml)
+in the source tree (and is installed at
+`/usr/share/doc/nft-tui/config.toml.example` by the .deb / .rpm).
+
 ## Verifying a release
 
 Every release artifact's SHA-256 is in `checksums.txt`, and that file

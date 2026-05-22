@@ -1,0 +1,45 @@
+# nft-tui example config file.
+#
+# Place this at one of:
+#
+#   $XDG_CONFIG_HOME/nft-tui/config.toml   (default if XDG_CONFIG_HOME is set)
+#   $HOME/.config/nft-tui/config.toml      (otherwise)
+#
+# or point nft-tui at an explicit path:
+#
+#   nft-tui --config /etc/nft-tui/config.toml
+#
+# Every key below is OPTIONAL. Anything missing falls back to the
+# CLI default. Anything passed on the command line ALWAYS overrides
+# the file — you don't have to comment fields out to test a one-off.
+
+# Update interval for live counters. Accepts any Go duration string
+# (e.g. "500ms", "2s", "1m"). Set to "0s" to disable polling
+# entirely — the netlink monitor below still triggers refreshes on
+# external changes.
+# refresh = "2s"
+
+# Enable edit / commit affordances at startup (the a / o / O / e / d
+# keys, :w / :r commands, the F2 commit modal). Off by default —
+# starting in read-only mode is the safer choice.
+# write = false
+
+# Subscribe to kernel netlink events so the explorer refreshes within
+# ~250 ms of any external nftables change. On by default; turn off
+# if you have a constrained syscall sandbox.
+# monitor = true
+
+# Colour theme. Choices: "default", "high-contrast", "mono".
+# theme = "default"
+
+# Rule-list column preset. Choices: "default", "minimal", "debug", "wide".
+# default  H#  PKTS  BYTES  IIF  OIF  SRC  DST  DPORT  VERDICT  RULE
+# minimal  H#  PKTS  RULE
+# debug    adds PROTO, SPORT, CT-STATE
+# wide     fewer columns so RULE gets more width
+# columns = "default"
+
+# Directory where committed nft scripts and the rolling audit.log
+# are archived. Default is $XDG_STATE_HOME/nft-tui (or
+# ~/.local/state/nft-tui).
+# audit_dir = "/var/lib/nft-tui"

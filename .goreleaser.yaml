@@ -85,15 +85,17 @@ signs:
 # uploaded alongside the release assets. Lets downstream users (and
 # scanners like Trivy / Grype) verify exactly which versions of which
 # deps shipped in each release.
+#
+# Per-archive only: a `binary` SBOM produces the same `nft-tui.sbom.json`
+# basename for linux/amd64 and linux/arm64 (the binary itself is just
+# `nft-tui` in both builds), and the second upload then conflicts with
+# the first via the GitHub release-asset uniqueness check. The archive
+# variant uses the full archive name (which includes goos/goarch) so
+# each architecture gets its own SBOM file, and the binary inside the
+# archive is covered transitively by Syft scanning the archive contents.
 sboms:
   - id: archive-sbom
     artifacts: archive
-    documents:
-      - "${artifact}.sbom.json"
-  # The static binary itself also gets an SBOM, useful for users who
-  # grab the bare binary from the tarball.
-  - id: binary-sbom
-    artifacts: binary
     documents:
       - "${artifact}.sbom.json"
 
@@ -127,6 +129,10 @@ nfpms:
           mode: 0644
       - src: README.md
         dst: /usr/share/doc/nft-tui/README.md
+        file_info:
+          mode: 0644
+      - src: examples/config.toml
+        dst: /usr/share/doc/nft-tui/config.toml.example
         file_info:
           mode: 0644
 

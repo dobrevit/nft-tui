@@ -11,6 +11,7 @@ import (
 
 	"github.com/rivo/tview"
 
+	"github.com/dobrevit/nft-tui/internal/config"
 	"github.com/dobrevit/nft-tui/internal/model"
 	"github.com/dobrevit/nft-tui/internal/nft"
 	"github.com/dobrevit/nft-tui/internal/ui"
@@ -26,6 +27,7 @@ var (
 
 func main() {
 	var (
+		configPath   = flag.String("config", "", "config file path; default $XDG_CONFIG_HOME/nft-tui/config.toml if present")
 		dumpOnly     = flag.Bool("dump", false, "fetch the ruleset, print a summary to stdout, and exit (no TUI)")
 		refreshEvery = flag.Duration("refresh", 2*time.Second, "live-counter refresh interval (e.g. 500ms, 5s, 0 to disable)")
 		writeMode    = flag.Bool("write", false, "enable edit/commit affordances (a / e / d keys, commit screen). Default is read-only.")
@@ -41,6 +43,11 @@ func main() {
 		fmt.Printf("nft-tui %s (commit %s, built %s)\n", version, commit, date)
 		return
 	}
+
+	// Layer the per-host config file under the CLI flags. Anything the
+	// operator set explicitly on argv wins; the config file fills in
+	// the rest. A missing default file is silent.
+	applyConfigDefaults(*configPath, refreshEvery, writeMode, auditDir, useMonitor, theme, columns)
 
 	t, ok := ui.LookupTheme(*theme)
 	if !ok {
@@ -103,6 +110,68 @@ func main() {
 	if err := app.SetRoot(exp.Root(), true).EnableMouse(true).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "nft-tui: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// applyConfigDefaults layers the per-host config file under any
+// already-parsed CLI flags. An explicit flag wins (we use flag.Visit
+// to know which were set on argv); a missing default config file is
+// silent; a malformed one is fatal (exit 2) because applying half a
+// config silently would be a surprise.
+func applyConfigDefaults(
+	cfgPath string,
+	refresh *time.Duration,
+	write *bool,
+	auditDir *string,
+	monitor *bool,
+	theme, columns *string,
+) {
+	path := cfgPath
+	pathExplicit := path != ""
+	if path == "" {
+		path = config.DefaultPath()
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		// Surface a bad config loudly. A typo in the operator's
+		// config silently falling back to defaults would be the
+		// worst kind of bug.
+		fmt.Fprintf(os.Stderr, "nft-tui: %v\n", err)
+		os.Exit(2)
+	}
+
+	// If the operator pointed us at a specific file with --config,
+	// and that file didn't exist, that's also an error (they meant
+	// to use it). The "silent default" forgiveness only applies to
+	// the XDG-default path.
+	if pathExplicit {
+		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+			fmt.Fprintf(os.Stderr, "nft-tui: --config %s: file not found\n", path)
+			os.Exit(2)
+		}
+	}
+
+	explicit := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+
+	if !explicit["refresh"] && cfg.Refresh != nil {
+		*refresh = cfg.Refresh.AsDuration()
+	}
+	if !explicit["write"] && cfg.Write != nil {
+		*write = *cfg.Write
+	}
+	if !explicit["audit-dir"] && cfg.AuditDir != nil {
+		*auditDir = *cfg.AuditDir
+	}
+	if !explicit["monitor"] && cfg.Monitor != nil {
+		*monitor = *cfg.Monitor
+	}
+	if !explicit["theme"] && cfg.Theme != nil {
+		*theme = *cfg.Theme
+	}
+	if !explicit["columns"] && cfg.Columns != nil {
+		*columns = *cfg.Columns
 	}
 }
 
