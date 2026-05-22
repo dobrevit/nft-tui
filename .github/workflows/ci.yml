@@ -52,14 +52,25 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: go test (with coverage)
-        # -coverpkg covers everything in the module, not just the
-        # package each test lives in — gives an honest picture of
-        # cross-package usage (e.g. nft.Renderer code exercised
-        # from the staged tests).
+        # -coverpkg scopes to ./internal/... — every package that
+        # has tests — instead of ./..., which would also instrument
+        # cmd/nft-tui (no tests, no use case). Instrumenting a main
+        # package with no tests trips the GOCOVERDIR assembly path
+        # which tries to invoke `go tool covdata`, and that tool
+        # isn't shipped with toolchains downloaded via the
+        # `toolchain` directive in go.mod — the test still runs,
+        # but the job exits 1 with "no such tool covdata".
+        #
+        # Skipping cmd/nft-tui costs us nothing (no testable code)
+        # while staying out of the covdata path entirely.
+        #
+        # Cross-package coverage (e.g. nft.Renderer code exercised
+        # from staged tests) is still picked up — internal/... is
+        # the union of every testable package.
         run: |
           go test -race -timeout=120s \
             -covermode=atomic \
-            -coverpkg=./... \
+            -coverpkg=./internal/... \
             -coverprofile=coverage.out \
             ./...
       - name: Upload coverage to Codecov
