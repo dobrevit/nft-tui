@@ -1,0 +1,36 @@
+# Codecov config.
+#
+# nft-tui has two natural coverage tiers:
+#   - logic packages (internal/{model,nft,staged,config}) where
+#     every code path is reachable from a unit test
+#   - tview UI plumbing (internal/ui/*) where most code drives
+#     widgets that only make sense against a real terminal —
+#     unit tests cover the pure helpers but not the layout calls
+#
+# The thresholds below reflect that. The numbers are conservative;
+# raise them as we add more UI test scaffolding.
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        # Allow coverage to drift down by 1% before failing the
+        # check — small refactors often shift a line or two
+        # off the covered path without harm.
+        threshold: 1%
+
+    patch:
+      default:
+        # New code in a PR should be tested at ≥70%. Lets us
+        # land tview-wiring PRs that are inherently untestable,
+        # while pushing on test coverage for new logic.
+        target: 70%
+        threshold: 5%
+
+# Files we don't bother covering — generated, build-tagged, or
+# inherently terminal-only.
+ignore:
+  - "**/*_fuzz_test.go"
+  - "**/*_integration_test.go"
+  - "examples/**"

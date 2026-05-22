@@ -1,8 +1,8 @@
 # CI — runs on every PR and every push to main.
 #
-# Three jobs: lint (gofmt + vet), unit tests, and a real-kernel
-# integration test against the runner's own nftables (touches root,
-# but the runner is throwaway).
+# Three jobs: lint (gofmt + vet), unit tests (with coverage uploaded
+# to Codecov), and a real-kernel integration test against the
+# runner's own nftables (touches root, but the runner is throwaway).
 
 name: ci
 
@@ -22,8 +22,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
@@ -46,19 +46,38 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: go test ./...
-        run: go test -race -timeout=120s ./...
+      - name: go test (with coverage)
+        # -coverpkg covers everything in the module, not just the
+        # package each test lives in — gives an honest picture of
+        # cross-package usage (e.g. nft.Renderer code exercised
+        # from the staged tests).
+        run: |
+          go test -race -timeout=120s \
+            -covermode=atomic \
+            -coverpkg=./... \
+            -coverprofile=coverage.out \
+            ./...
+      - name: Upload coverage to Codecov
+        # Tokenless upload works for public repos; set CODECOV_TOKEN
+        # in repo secrets if you want a stable identity for the
+        # uploads (recommended once the badge stabilises).
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.out
+          flags: unit
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true

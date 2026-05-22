@@ -1,5 +1,10 @@
 # nft-tui
 
+[![ci](https://github.com/dobrevit/nft-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/dobrevit/nft-tui/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/dobrevit/nft-tui/branch/main/graph/badge.svg)](https://codecov.io/gh/dobrevit/nft-tui)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dobrevit/nft-tui.svg)](https://pkg.go.dev/github.com/dobrevit/nft-tui)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A terminal UI for **inspecting and managing nftables** on Linux, written in Go.
 
 Inspired by `k9s`, `htop`, and Midnight Commander: a multi-pane, keyboard-driven
