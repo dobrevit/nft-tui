@@ -9,7 +9,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	_ "net/http/pprof" // registers /debug/pprof on the default mux
+	//nolint:gosec // G108: pprof is intentionally available, gated
+	// behind --pprof (default empty = disabled) and surfaced via
+	// slog.Warn when enabled; see startPprof.
+	_ "net/http/pprof"
 	"os"
 	"time"
 
