@@ -91,6 +91,10 @@ type Explorer struct {
 	fetch    func() (*model.Ruleset, error)
 	interval time.Duration
 	stop     chan struct{}
+	// refreshTrigger lets external sources (the netlink Watch from
+	// Phase 4.3) request a fetch outside the ticker cadence. Buffer
+	// of 1 collapses bursts into a single refresh.
+	refreshTrigger chan struct{}
 
 	// ruleIdx points to every Rule in the current Ruleset, keyed by
 	// (family, table, chain, handle). Used to merge fresh counters in
@@ -180,7 +184,21 @@ func (e *Explorer) StartRefresh() {
 		return
 	}
 	e.stop = make(chan struct{})
+	e.refreshTrigger = make(chan struct{}, 1)
 	go e.refreshLoop()
+}
+
+// TriggerRefresh asks the refresh loop to fetch immediately. Safe to
+// call from any goroutine. Non-blocking: if a refresh is already
+// queued the call is a no-op.
+func (e *Explorer) TriggerRefresh() {
+	if e.refreshTrigger == nil {
+		return
+	}
+	select {
+	case e.refreshTrigger <- struct{}{}:
+	default:
+	}
 }
 
 // StopRefresh stops the background ticker. Idempotent.
@@ -200,16 +218,22 @@ func (e *Explorer) refreshLoop() {
 		case <-e.stop:
 			return
 		case <-t.C:
-			rs, err := e.fetch()
-			e.app.QueueUpdateDraw(func() {
-				if err != nil {
-					e.setStatus(fmt.Sprintf("[red]refresh error: %v[-]", err))
-					return
-				}
-				e.applyRuleset(rs)
-			})
+			e.doRefresh()
+		case <-e.refreshTrigger:
+			e.doRefresh()
 		}
 	}
+}
+
+func (e *Explorer) doRefresh() {
+	rs, err := e.fetch()
+	e.app.QueueUpdateDraw(func() {
+		if err != nil {
+			e.setStatus(fmt.Sprintf("[red]refresh error: %v[-]", err))
+			return
+		}
+		e.applyRuleset(rs)
+	})
 }
 
 // applyRuleset merges a freshly-fetched ruleset into the live UI. If the

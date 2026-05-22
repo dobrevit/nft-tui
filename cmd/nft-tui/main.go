@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -24,6 +25,7 @@ func main() {
 		refreshEvery = flag.Duration("refresh", 2*time.Second, "live-counter refresh interval (e.g. 500ms, 5s, 0 to disable)")
 		writeMode    = flag.Bool("write", false, "enable edit/commit affordances (a / e / d keys, commit screen). Default is read-only.")
 		auditDir     = flag.String("audit-dir", nft.DefaultAuditDir(), "directory where committed nft scripts are archived")
+		useMonitor   = flag.Bool("monitor", true, "subscribe to kernel netlink events for immediate refresh on external changes")
 	)
 	flag.Parse()
 
@@ -53,6 +55,21 @@ func main() {
 	exp := ui.NewExplorer(app, rs, conn.ListRuleset, *refreshEvery, *writeMode, committer)
 	exp.StartRefresh()
 	defer exp.StopRefresh()
+
+	if *useMonitor {
+		watchCtx, watchCancel := context.WithCancel(context.Background())
+		defer watchCancel()
+		eventCh, err := nft.Watch(watchCtx, 250*time.Millisecond)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "nft-tui: monitor disabled: %v\n", err)
+		} else {
+			go func() {
+				for range eventCh {
+					exp.TriggerRefresh()
+				}
+			}()
+		}
+	}
 	if err := app.SetRoot(exp.Root(), true).EnableMouse(true).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "nft-tui: %v\n", err)
 		os.Exit(1)
