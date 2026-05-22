@@ -1,0 +1,73 @@
+# CI — runs on every PR and every push to main.
+#
+# Three jobs: lint (gofmt + vet), unit tests, and a real-kernel
+# integration test inside an unshared user/net namespace so we touch
+# nft for real on every change.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          diff=$(gofmt -l .)
+          if [ -n "$diff" ]; then
+            echo "::error::gofmt would change the following files:"
+            echo "$diff"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go test ./...
+        run: go test -race -timeout=120s ./...
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: install nftables
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nftables
+      - name: build integration test binary
+        run: go test -tags=integration -c -o nft-integration ./internal/nft
+      - name: run inside unshared netns
+        # GitHub-hosted runners have unprivileged user namespaces
+        # enabled by default; unshare -rn gives us a CAP_NET_ADMIN
+        # netns with no real privilege escalation. The integration
+        # tests mutate the kernel ruleset of THIS netns only.
+        run: unshare -rn ./nft-integration -test.v -test.run=Integration -test.timeout=60s

@@ -1,0 +1,33 @@
+# release-drafter — maintains a draft release on every merge to main.
+#
+# Every PR merged to main appends a line to the draft for the next
+# release, grouped by label. The maintainer reviews and publishes the
+# draft when they're ready to cut a tag, then pushes the tag — at
+# which point .github/workflows/release.yml runs goreleaser to attach
+# the binaries.
+#
+# See .github/release-drafter.yml for the template and label mapping.
+
+name: release-drafter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  update_release_draft:
+    permissions:
+      contents: write       # create/update the draft release
+      pull-requests: write  # comment on PRs missing required labels (autolabeler)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        with:
+          config-name: release-drafter.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

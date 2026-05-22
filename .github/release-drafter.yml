@@ -1,0 +1,115 @@
+# release-drafter configuration.
+#
+# Read by .github/workflows/release-drafter.yml. Tunes how merged PRs
+# accumulate into the draft release notes between tags.
+
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+categories:
+  - title: '⚠️  Breaking changes'
+    labels:
+      - 'breaking'
+      - 'breaking-change'
+
+  - title: '🚀 Features'
+    labels:
+      - 'feature'
+      - 'enhancement'
+
+  - title: '🐛 Bug fixes'
+    labels:
+      - 'bug'
+      - 'fix'
+
+  - title: '🔒 Security'
+    labels:
+      - 'security'
+
+  - title: '📖 Documentation'
+    labels:
+      - 'docs'
+      - 'documentation'
+
+  - title: '🧰 Maintenance'
+    labels:
+      - 'chore'
+      - 'refactor'
+      - 'test'
+      - 'ci'
+      - 'dependencies'
+
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-escapes: '\<*_&'
+
+# How the next version is computed when the maintainer clicks
+# "publish". `default: patch` keeps us conservative — features bump
+# the minor only when the PR is labelled accordingly.
+version-resolver:
+  major:
+    labels:
+      - 'major'
+      - 'breaking'
+      - 'breaking-change'
+  minor:
+    labels:
+      - 'minor'
+      - 'feature'
+      - 'enhancement'
+  patch:
+    labels:
+      - 'patch'
+      - 'bug'
+      - 'fix'
+      - 'chore'
+      - 'refactor'
+      - 'docs'
+      - 'documentation'
+      - 'test'
+      - 'ci'
+      - 'dependencies'
+  default: patch
+
+# Auto-label PRs by branch / file / title so the draft works without
+# every contributor needing to remember the label conventions.
+autolabeler:
+  - label: 'docs'
+    files:
+      - 'docs/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'man/**'
+  - label: 'ci'
+    files:
+      - '.github/**'
+      - '.goreleaser.yaml'
+      - 'Makefile'
+  - label: 'dependencies'
+    files:
+      - 'go.mod'
+      - 'go.sum'
+  - label: 'feature'
+    title:
+      - '/^Phase \d+\.\d+:/i'
+      - '/^feat(\(.+\))?:/i'
+  - label: 'bug'
+    title:
+      - '/^fix(\(.+\))?:/i'
+  - label: 'refactor'
+    title:
+      - '/^refactor(\(.+\))?:/i'
+      - '/^deferred:/i'
+  - label: 'test'
+    title:
+      - '/^test(\(.+\))?:/i'
+
+template: |
+  ## What's changed
+
+  $CHANGES
+
+  ## Contributors
+
+  $CONTRIBUTORS
+
+  **Full changelog**: $PREVIOUS_TAG...v$RESOLVED_VERSION

@@ -1,0 +1,63 @@
+# CodeQL static analysis — security/quality scanning on every PR and
+# weekly on main. Findings appear under the "Security" tab as code
+# scanning alerts.
+#
+# The default suite covers Go's well-known footguns: unsafe slice
+# indexing, command injection via os/exec, path traversal, hard-coded
+# credentials, missing rand seed for crypto-style use, etc.
+
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly. Catches new query packs published by GitHub between PRs.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze (go)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # upload SARIF results
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['go']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # security-extended adds queries beyond the default set
+          # (e.g. clear-text logging of sensitive data). security-and-quality
+          # also enables maintainability queries.
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'

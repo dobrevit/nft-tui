@@ -1,0 +1,51 @@
+# dependabot — keeps Go modules and GitHub Actions versions current.
+#
+# - Go modules: weekly, grouped by minor/patch so a tide of small
+#   bumps lands as one PR instead of N.
+# - GitHub Actions: weekly, grouped — we pin uses: at @vN.
+#
+# Major-version bumps still come through as their own PR so a human
+# eyeballs the breaking change before it lands.
+
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/London
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'chore'
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      go-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/London
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'ci'
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      gha-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - 'minor'
+          - 'patch'

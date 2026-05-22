@@ -1,0 +1,39 @@
+# govulncheck — Go's official vulnerability scanner. Complements
+# CodeQL: where CodeQL looks for patterns, govulncheck cross-references
+# the imported package versions against the Go vulnerability database.
+#
+# Runs on every PR + weekly so we hear about a new CVE in a transitive
+# dep within a week even if nobody is opening PRs.
+
+name: govulncheck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run govulncheck
+        # The official action installs the matching govulncheck tool
+        # and runs it across the module. Exit-non-zero on findings —
+        # which is what we want for PRs.
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          repo-checkout: false   # checkout already done above
