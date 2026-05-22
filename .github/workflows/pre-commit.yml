@@ -38,16 +38,32 @@ jobs:
           # under ~/.cache/pre-commit.
 
       - name: Install golangci-lint
-        # The local pre-commit hook references golangci-lint with
-        # `language: system`, so we just need the binary on PATH.
-        # `go install` uses our pinned toolchain (toolchain go1.26.2)
-        # which sidesteps the action's run-after-install behaviour —
-        # passing `args:` to golangci-lint-action@v7 always wraps as
-        # `golangci-lint run <args>`, and there's no v2 flag that
-        # makes that a no-op. Direct `go install` builds + drops the
-        # binary in $GOBIN ($HOME/go/bin) which setup-go has on PATH.
+        # Drop the prebuilt release binary on PATH.
+        #
+        # Why not go install? `go install pkg@version` builds against
+        # the target package's go.mod, not ours, so our `toolchain
+        # go1.26.2` pin in /go.mod doesn't influence it. The result
+        # was a binary built with Go 1.25 on the CI runner, which
+        # then refused our config: "the Go language version (go1.25)
+        # used to build golangci-lint is lower than the targeted Go
+        # version (1.26.2)".
+        #
+        # Why not golangci-lint-action? Action v7 always runs
+        # `golangci-lint run <args>` after install; there's no
+        # install-only mode. The dedicated golangci-lint.yml job
+        # uses the action as intended. This pre-commit job only
+        # needs the binary on PATH so the `language: system` hook
+        # can find it.
+        #
+        # The official install.sh script downloads the upstream
+        # release binary, which is built by the golangci-lint
+        # maintainers with the right Go version for that release.
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
-          golangci-lint --version
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+            | sh -s -- -b "$HOME/.local/bin" v2.12.2
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/golangci-lint" --version
 
       - uses: pre-commit/action@v3.0.1
