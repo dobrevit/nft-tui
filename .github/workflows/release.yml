@@ -5,6 +5,7 @@
 #   - tar.gz archives with binary + man page + LICENSE + README + docs
 #   - .deb and .rpm packages (no libc dependency — fully static)
 #   - SHA-256 checksum file
+#   - SPDX-JSON SBOMs per archive + per binary (via Syft)
 #
 # The GitHub release that gets created is a draft (per .goreleaser.yaml);
 # the release-drafter workflow may have already prepared release notes
@@ -35,6 +36,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Install Syft (SBOM generator)
+        # goreleaser shells out to syft for the SBOM step; it needs
+        # to be on PATH. The official installer drops syft into ./bin
+        # under the cwd; we move it to a global location.
+        uses: anchore/sbom-action/download-syft@v0
 
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6
