@@ -20,7 +20,7 @@ const helpText = `[::b]nft-tui — keybindings[::-]
     :                global search OR command line:
        :w <path>        snapshot the live ruleset to <path>
        :r <path>        restore from a snapshot (with dead-man's switch)
-       Up / Down        recall previous / next entry from `:` history
+       Up / Down        recall previous / next entry from : history
        Tab              complete path for :w / :r
     Esc              cancel filter / close search
 
