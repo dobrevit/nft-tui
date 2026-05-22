@@ -59,6 +59,7 @@ type Config struct {
 	Theme    *string   `toml:"theme"`
 	Columns  *string   `toml:"columns"`
 	AuditDir *string   `toml:"audit_dir"`
+	LogFile  *string   `toml:"log_file"`
 }
 
 // Load reads the TOML file at path. A nonexistent path is not an

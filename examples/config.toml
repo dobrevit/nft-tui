@@ -55,3 +55,10 @@
 # are archived. Default is $XDG_STATE_HOME/nft-tui (or
 # ~/.local/state/nft-tui).
 # audit_dir = "/var/lib/nft-tui"
+
+# Append structured diagnostic logs to this file. Empty = no
+# logging (the default). Distinct from audit_dir's audit.log:
+# audit.log records every commit / restore / rollback as a paste-
+# ready artefact; this file records *internal* state for "why isn't
+# this working?" support — refresh ticks, monitor events, errors.
+# log_file = "~/.local/state/nft-tui/debug.log"

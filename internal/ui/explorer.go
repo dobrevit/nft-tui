@@ -6,6 +6,7 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -258,12 +259,21 @@ func (e *Explorer) refreshLoop() {
 }
 
 func (e *Explorer) doRefresh() {
+	start := time.Now()
 	rs, err := e.fetch()
 	e.app.QueueUpdateDraw(func() {
 		if err != nil {
+			slog.Warn("refresh failed", "err", err.Error())
 			e.setStatus(fmt.Sprintf("[red]refresh error: %v[-]", err))
 			return
 		}
+		// Verbose by design — operators turn on the log file for
+		// "why isn't this refreshing?" diagnostics; this is the
+		// breadcrumb that says yes the loop is running.
+		slog.Debug("refresh ok",
+			"tables", len(rs.Tables),
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
 		e.applyRuleset(rs)
 	})
 }

@@ -6,6 +6,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"time"
 
@@ -35,6 +37,7 @@ func main() {
 		useMonitor   = flag.Bool("monitor", true, "subscribe to kernel netlink events for immediate refresh on external changes")
 		theme        = flag.String("theme", "default", "colour theme: "+ui.ThemeNames())
 		columns      = flag.String("columns", "default", "rule-list column preset: "+ui.ColumnPresetNames())
+		logFile      = flag.String("log-file", "", "append diagnostic logs to <path>; empty disables logging entirely (the TUI never writes to stderr)")
 		showVersion  = flag.Bool("version", false, "print version information and exit")
 	)
 	flag.Parse()
@@ -47,8 +50,13 @@ func main() {
 	// Layer the per-host config file under the CLI flags. Anything the
 	// operator set explicitly on argv wins; the config file fills in
 	// the rest. A missing default file is silent.
-	applyConfigDefaults(*configPath, refreshEvery, writeMode, auditDir, useMonitor, theme, columns)
+	applyConfigDefaults(*configPath, refreshEvery, writeMode, auditDir, useMonitor, theme, columns, logFile)
 
+	// Validate CLI / config combinations BEFORE opening the log file —
+	// a bad theme name exits 2 without `defer closeLog()` getting to
+	// run; not worth the gocritic warning when invalid-args errors
+	// already go to stderr immediately. Logging covers what happens
+	// AFTER we've committed to running.
 	t, ok := ui.LookupTheme(*theme)
 	if !ok {
 		fmt.Fprintln(os.Stderr, ui.ThemeError(*theme))
@@ -63,23 +71,35 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Configure structured logging. With no --log-file the slog
+	// default is wired to io.Discard so well-meaning slog.Info calls
+	// in any package can't disrupt the TUI by sneaking into stderr.
+	closeLog := setupLogging(*logFile)
+	defer closeLog()
+
 	conn, err := nft.NewConn()
 	if err != nil {
+		// closeLog handles the deferred-skip vs os.Exit race — call
+		// it explicitly so the "started" log entry gets flushed and
+		// the file handle closes cleanly.
+		closeLog()
 		fmt.Fprintf(os.Stderr, "nft-tui: %v\n", err)
 		fmt.Fprintln(os.Stderr, "hint: nftables netlink usually requires CAP_NET_ADMIN.")
 		fmt.Fprintln(os.Stderr, "      try: sudo ./nft-tui")
 		fmt.Fprintln(os.Stderr, "      or, for dev without root: unshare -rn ./nft-tui")
-		os.Exit(1)
+		os.Exit(1) //nolint:gocritic // closeLog above is the explicit cleanup
 	}
 	defer func() { _ = conn.Close() }()
 
 	rs, err := conn.ListRuleset()
 	if err != nil {
-		// `defer conn.Close()` won't run after os.Exit; close explicitly
-		// so we don't leak the netlink fd into the kernel even briefly.
+		// Two deferred resources to clean up explicitly because the
+		// process exits before the runtime gets to either: the
+		// netlink conn and the log file.
 		_ = conn.Close()
+		closeLog()
 		fmt.Fprintf(os.Stderr, "nft-tui: list ruleset: %v\n", err)
-		os.Exit(1) //nolint:gocritic // intentional: we just closed conn above
+		os.Exit(1) //nolint:gocritic // explicit cleanup above covers both defers
 	}
 
 	if *dumpOnly {
@@ -113,6 +133,39 @@ func main() {
 	}
 }
 
+// setupLogging configures slog according to --log-file. Empty path =>
+// silent (everything written to io.Discard, but slog calls remain
+// cheap). Path => append-mode file with a text handler at INFO level.
+// Returns a deferred-close function the caller invokes on shutdown.
+//
+// stderr is NEVER a log target because the TUI owns the terminal —
+// surprise stderr output would smear over the rendered UI.
+func setupLogging(path string) (cleanup func()) {
+	if path == "" {
+		slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+		return func() {}
+	}
+	// 0o600: same permissions as the audit log; this file can contain
+	// rule contents, set elements, and operator paths.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "nft-tui: --log-file %s: %v\n", path, err)
+		os.Exit(2)
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+	slog.Info("nft-tui started",
+		"version", version,
+		"commit", commit,
+		"pid", os.Getpid(),
+	)
+	return func() {
+		slog.Info("nft-tui stopped")
+		_ = f.Close()
+	}
+}
+
 // applyConfigDefaults layers the per-host config file under any
 // already-parsed CLI flags. An explicit flag wins (we use flag.Visit
 // to know which were set on argv); a missing default config file is
@@ -125,6 +178,7 @@ func applyConfigDefaults(
 	auditDir *string,
 	monitor *bool,
 	theme, columns *string,
+	logFile *string,
 ) {
 	path := cfgPath
 	pathExplicit := path != ""
@@ -172,6 +226,9 @@ func applyConfigDefaults(
 	}
 	if !explicit["columns"] && cfg.Columns != nil {
 		*columns = *cfg.Columns
+	}
+	if !explicit["log-file"] && cfg.LogFile != nil {
+		*logFile = *cfg.LogFile
 	}
 }
 

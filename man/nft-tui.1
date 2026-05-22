@@ -107,6 +107,18 @@ or
 Default
 .BR default .
 
+.TP
+\fB\-log-file\fR \fIpath\fR
+Append structured diagnostic logs to
+.IR path .
+Records internal events — refresh ticks, monitor signals, commit /
+restore outcomes, dead-man's switch transitions — for "why isn't
+this working?" support. Distinct from the audit log under
+.B \-audit-dir
+which captures the nft script of every commit. Empty (the default)
+disables logging entirely; nft-tui never writes to stderr while the
+TUI is on screen.
+
 .SH KEYS
 .SS Navigation
 .TP
@@ -171,6 +183,28 @@ auto-rebuild couldn't recover from.
 .TP
 .B m
 Open the live monitor (top-N rules by pps / bps / Δpkts).
+.TP
+.B c
+Cycle the rule-list column preset
+.RB ( default
+\(rA
+.B minimal
+\(rA
+.B debug
+\(rA
+.B wide ).
+
+.SS Sort
+.TP
+.B s
+Cycle the rule-list sort: natural (kernel-evaluation order, the
+default) \(rA by packets \(rA by bytes \(rA natural. The title bar
+shows the current sort when it's not natural, so an operator can't
+accidentally mistake a packet-sorted view for the firewall's
+evaluation order.
+.TP
+.B S
+Reverse the current sort direction.
 
 .SS Edit (requires \-write)
 .TP

@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sync"
 	"time"
@@ -166,6 +167,11 @@ func (e *Explorer) beginRestore() {
 			Action: "restore",
 			File:   e.deadman.snapshotPath,
 		})
+		slog.Info("restore applied; arming dead-man's switch",
+			"source", e.deadman.snapshotPath,
+			"rollback", e.deadman.rollbackPath,
+			"deadline_s", int(deadmanWindow.Seconds()),
+		)
 
 		// Step 3: arm the timer. The next interaction is via deadmanLoop.
 		e.deadman.confirmCh = make(chan struct{})
@@ -186,6 +192,7 @@ func (e *Explorer) deadmanLoop() {
 	for {
 		select {
 		case <-e.deadman.confirmCh:
+			slog.Info("restore confirmed by operator", "rollback_retained", e.deadman.rollbackPath)
 			e.app.QueueUpdateDraw(func() {
 				e.deadman.phase = dmDone
 				e.closeDeadman(fmt.Sprintf(
@@ -195,10 +202,14 @@ func (e *Explorer) deadmanLoop() {
 			})
 			return
 		case <-e.deadman.cancelCh:
+			slog.Warn("restore cancelled by operator; rolling back")
 			e.executeRollback("[yellow]restore cancelled — rolled back[-]")
 			return
 		case <-tick.C:
 			if time.Now().After(e.deadman.deadline) {
+				slog.Warn("dead-man's switch fired; auto-rolling back",
+					"window_s", int(deadmanWindow.Seconds()),
+				)
 				e.executeRollback("[yellow]dead-man's switch fired — auto-rolled back[-]")
 				return
 			}

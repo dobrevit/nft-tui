@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -292,18 +293,21 @@ func (e *Explorer) applyCommit() {
 	ops := e.staged.Ops()
 	e.diffStatus.SetText("[gray]committing…[-]")
 
+	slog.Info("commit starting", "ops", len(ops))
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		auditPath, err := e.committer.Commit(ctx, ops)
 		e.app.QueueUpdateDraw(func() {
 			if err != nil {
+				slog.Error("commit failed", "ops", len(ops), "err", err.Error())
 				e.dryRun = dryRunFail
 				e.dryRunErr = "commit failed: " + err.Error()
 				e.refreshDryRunStatus()
 				return
 			}
 			n := e.staged.Len()
+			slog.Info("commit applied", "ops", n, "audit", auditPath)
 			e.staged.Clear()
 			e.dryRun = dryRunNotRun
 			// Pull a fresh snapshot so the explorer reflects the new
