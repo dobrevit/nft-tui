@@ -126,33 +126,61 @@ func (e *Explorer) editorInputCapture(ev *tcell.EventKey) *tcell.EventKey {
 		e.toggleEditorView()
 		return nil
 	case tcell.KeyTab, tcell.KeyBacktab:
-		// Manual cycle between the two "outer" widgets (raw-mode
-		// TextArea and the comment InputField). When focus is
-		// anywhere ELSE (the form, or one of its individual fields)
-		// fall through to tview's default Tab handling so the
-		// form's own field-cycle runs — without this fallthrough,
-		// Tab inside the form did nothing.
-		//
-		// Tab and Shift+Tab collapse into the same swap here because
-		// there are only two non-form widgets in the cycle; within
-		// the form, tview handles forward/backward field traversal
-		// natively when we pass the event through.
-		switch e.app.GetFocus() {
-		case e.editorBody:
-			e.app.SetFocus(e.editorComment)
-			return nil
-		case e.editorComment:
-			if e.editorView == viewForm {
-				e.app.SetFocus(e.editorForm)
-			} else {
-				e.app.SetFocus(e.editorBody)
-			}
-			return nil
-		}
-		// Anywhere else (a form field) — let tview cycle.
-		return ev
+		return e.cycleEditorFocus(ev)
 	}
 	return ev
+}
+
+// cycleEditorFocus implements Tab / Shift+Tab traversal across the
+// editor's three focus slots: the form (or the raw TextArea in raw
+// view) → comment → back. Inside the form, tview's own field-cycle
+// handles item-to-item Tab; we only intervene at the edges so the
+// cycle continues into comment instead of wrapping.
+func (e *Explorer) cycleEditorFocus(ev *tcell.EventKey) *tcell.EventKey {
+	if e.editorView == viewForm && e.editorForm.HasFocus() {
+		return e.cycleFromForm(ev)
+	}
+	switch e.app.GetFocus() {
+	case e.editorBody:
+		e.app.SetFocus(e.editorComment)
+		return nil
+	case e.editorComment:
+		e.cycleFromComment(ev)
+		return nil
+	}
+	return ev
+}
+
+// cycleFromForm handles Tab/Backtab when focus is inside the form.
+// Returns nil if we steered focus out to comment; otherwise returns
+// the event so tview's form cycles to the next/previous item.
+func (e *Explorer) cycleFromForm(ev *tcell.EventKey) *tcell.EventKey {
+	item, _ := e.editorForm.GetFocusedItemIndex()
+	last := e.editorForm.GetFormItemCount() - 1
+	leave := (ev.Key() == tcell.KeyTab && item == last) ||
+		(ev.Key() == tcell.KeyBacktab && item == 0)
+	if leave {
+		e.app.SetFocus(e.editorComment)
+		return nil
+	}
+	return ev
+}
+
+// cycleFromComment moves focus out of the comment field into the form
+// (or the raw TextArea in raw view). Forward enters the form at the
+// first item; backward enters at the last so Shift+Tab from comment
+// lands where the eye expects.
+func (e *Explorer) cycleFromComment(ev *tcell.EventKey) {
+	if e.editorView != viewForm {
+		e.app.SetFocus(e.editorBody)
+		return
+	}
+	if ev.Key() == tcell.KeyBacktab {
+		e.editorForm.SetFocus(e.editorForm.GetFormItemCount() - 1)
+	} else {
+		e.editorForm.SetFocus(0)
+	}
+	e.app.SetFocus(e.editorForm)
 }
 
 // openEditorAdd opens the editor in modeAdd targeting the supplied chain.

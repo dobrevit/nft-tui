@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/dobrevit/nft-tui/internal/model"
@@ -217,7 +218,38 @@ func (e *Explorer) buildEditorForm() *tview.Form {
 		push()
 	})
 
+	// Scroll hints: when the focused field is anywhere but the first
+	// or last, draw ▲/▼ glyphs in the form's border so the operator
+	// sees there's more content above/below than the visible window
+	// is showing. Useful on small terminals where the form's 14 fields
+	// don't all fit.
+	f.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		idx, _ := f.GetFocusedItemIndex()
+		last := f.GetFormItemCount() - 1
+		drawBoxScrollHints(screen, x, y, width, height, idx > 0, idx >= 0 && idx < last)
+		return f.GetInnerRect()
+	})
+
 	return f
+}
+
+// drawBoxScrollHints overlays small ▲/▼ glyphs on the right side of a
+// bordered primitive's top/bottom border row to signal that there is
+// more content above or below the visible area. Called from a Box's
+// drawFunc — runs after the border is rendered, so we just replace the
+// horizontal-border rune at one cell.
+func drawBoxScrollHints(screen tcell.Screen, x, y, width, height int, above, below bool) {
+	if width < 4 || height < 2 {
+		return
+	}
+	col := x + width - 3
+	style := tcell.StyleDefault.Foreground(tcell.ColorYellow)
+	if above {
+		screen.SetContent(col, y, '▲', nil, style)
+	}
+	if below {
+		screen.SetContent(col, y+height-1, '▼', nil, style)
+	}
 }
 
 // indexOf returns the position of want in opts, or fallback if not
