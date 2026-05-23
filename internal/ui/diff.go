@@ -37,6 +37,7 @@ func (e *Explorer) buildDiffPage() tview.Primitive {
 	e.diffSummary.SetBorder(true).
 		SetTitle(" Staged changes ").
 		SetTitleAlign(tview.AlignLeft)
+	attachTextViewScrollHints(e.diffSummary)
 
 	e.diffScript = tview.NewTextView().
 		SetDynamicColors(false).
@@ -44,6 +45,7 @@ func (e *Explorer) buildDiffPage() tview.Primitive {
 	e.diffScript.SetBorder(true).
 		SetTitle(" nft script (will be passed to nft -f) ").
 		SetTitleAlign(tview.AlignLeft)
+	attachTextViewScrollHints(e.diffScript)
 
 	e.diffStatus = tview.NewTextView().
 		SetDynamicColors(true).

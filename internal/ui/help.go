@@ -72,16 +72,9 @@ func (e *Explorer) buildHelpPage() tview.Primitive {
 		return ev
 	})
 	// Scroll arrows on the border so the operator sees the help is
-	// taller than the visible window (24 rows is a soft cap; on small
-	// terminals the bottom rows are clipped). Use GetWrappedLineCount
-	// to respect wrapping; subtract 2 for the borders.
-	view.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		row, _ := view.GetScrollOffset()
-		total := view.GetWrappedLineCount()
-		inner := height - 2
-		drawBoxScrollHints(screen, x, y, width, height, row > 0, row+inner < total)
-		return view.GetInnerRect()
-	})
+	// taller than the visible window — on small terminals the bottom
+	// rows are clipped without any indication.
+	attachTextViewScrollHints(view)
 	return tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(nil, 0, 1, false).
 		AddItem(

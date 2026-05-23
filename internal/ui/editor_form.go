@@ -252,6 +252,35 @@ func drawBoxScrollHints(screen tcell.Screen, x, y, width, height int, above, bel
 	}
 }
 
+// attachTextViewScrollHints wires drawBoxScrollHints onto a TextView's
+// border using its real scroll offset and wrapped line count. Use for
+// bordered text panes that may exceed the visible area (help, preview,
+// diff summary/script).
+func attachTextViewScrollHints(view *tview.TextView) {
+	view.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		row, _ := view.GetScrollOffset()
+		total := view.GetWrappedLineCount()
+		inner := height - 2
+		drawBoxScrollHints(screen, x, y, width, height, row > 0, row+inner < total)
+		return view.GetInnerRect()
+	})
+}
+
+// attachTableScrollHints wires drawBoxScrollHints onto a Table's border
+// based on its scroll offset vs row count. Header rows fixed via
+// SetFixed are not subtracted — the offset is reported in absolute row
+// coordinates and the slight over-estimate (▼ may flicker off one row
+// earlier) is fine for an indicator.
+func attachTableScrollHints(table *tview.Table) {
+	table.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		row, _ := table.GetOffset()
+		total := table.GetRowCount()
+		inner := height - 2
+		drawBoxScrollHints(screen, x, y, width, height, row > 0, row+inner < total)
+		return table.GetInnerRect()
+	})
+}
+
 // indexOf returns the position of want in opts, or fallback if not
 // present. Used to map prefilled field values back to tview.Form
 // dropdown indices.

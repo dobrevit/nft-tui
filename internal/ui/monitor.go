@@ -47,6 +47,7 @@ func (e *Explorer) buildMonitorPage() tview.Primitive {
 		SetFixed(1, 0)
 	e.monitorTable.SetBorder(true).
 		SetTitleAlign(tview.AlignLeft)
+	attachTableScrollHints(e.monitorTable)
 
 	e.monitorSpark = tview.NewTextView().
 		SetDynamicColors(true).

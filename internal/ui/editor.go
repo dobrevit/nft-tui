@@ -58,6 +58,7 @@ func (e *Explorer) buildEditorPage() tview.Primitive {
 	e.editorPreview.SetBorder(true).
 		SetTitle(" Preview (will be staged) ").
 		SetTitleAlign(tview.AlignLeft)
+	attachTextViewScrollHints(e.editorPreview)
 
 	e.editorBody = tview.NewTextArea().
 		SetPlaceholder(`e.g. tcp dport 22 counter accept`)
