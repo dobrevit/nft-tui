@@ -77,7 +77,7 @@ jobs:
         # Tokenless upload works for public repos; set CODECOV_TOKEN
         # in repo secrets if you want a stable identity for the
         # uploads (recommended once the badge stabilises).
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: coverage.out
           flags: unit
